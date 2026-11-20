@@ -10,7 +10,7 @@ cd portfolio-x-ray
 docker compose up -d --build
 ```
 
-Open `http://<this-machine>:8096` (change with `HOST_PORT=…`). Positions are stored in this browser only.
+Open `http://<this-machine>:8097` (change with `HOST_PORT=…`; the default avoids 8096, which Jellyfin uses). The container still listens on 8096 internally. Positions are stored in this browser only.
 
 Data: a pre-scraped holdings file if you provide one, then the issuers' public holdings pages and Yahoo Finance (unofficial).
 No API keys, no accounts. Not investment advice.

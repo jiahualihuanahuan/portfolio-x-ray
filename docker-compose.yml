@@ -2,7 +2,7 @@
 #
 #   docker compose up -d --build
 #
-# Open http://<this-machine>:8096. Change the published port with HOST_PORT.
+# Open http://<this-machine>:8097 (host 8096 is avoided: it is Jellyfin's default). Change the published port with HOST_PORT.
 # Holdings you enter stay in your browser (localStorage). Optional pre-scraped ETF holdings live in the
 # portfolio-x-ray-data volume at /data/lookthru/holdings.json (see README).
 
@@ -15,7 +15,7 @@ services:
     container_name: portfolio-x-ray
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-8096}:8096"
+      - "${HOST_PORT:-8097}:8096"
     environment:
       PORT: "8096"
       HOST: "0.0.0.0"
