@@ -65,6 +65,19 @@ async function yahooFetch(url: string, init: RequestInit = {}): Promise<Response
   });
 }
 
+async function yahooFetchWithBackoff(url: string, init: RequestInit = {}, tries = 3): Promise<Response> {
+  let wait = 1500;
+  let last: Response | null = null;
+  for (let i = 0; i < tries; i++) {
+    const res = await yahooFetch(url, init);
+    last = res;
+    if (res.status !== 429 && res.status !== 503) return res;
+    await new Promise((r) => setTimeout(r, wait));
+    wait *= 2;
+  }
+  return last ?? yahooFetch(url, init);
+}
+
 async function ensureCrumb(): Promise<string | null> {
   if (crumb && Date.now() - crumbAt < 10 * 60 * 1000) return crumb;
   try {
@@ -140,7 +153,7 @@ async function fetchQuote(symbol: string): Promise<Quote | null> {
   }
 }
 
-async function fetchYahooHoldings(symbol: string): Promise<HoldingLine[] | null> {
+export async function fetchYahooHoldings(symbol: string): Promise<HoldingLine[] | null> {
   const cached = holdingsCache.get(symbol);
   if (cached && Date.now() - cached.at < HOLDINGS_TTL_MS) return cached.value;
   const c = await ensureCrumb();
@@ -496,4 +509,51 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
   } finally {
     forceQuotes = previous;
   }
+}
+
+
+const ESTIMATE_MODULES = "earningsTrend,defaultKeyStatistics,financialData,price,summaryDetail";
+
+export async function fetchQuoteSummaryJson(symbol: string, modules = ESTIMATE_MODULES): Promise<unknown | null> {
+  const c = await ensureCrumb();
+  if (!c) return null;
+  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${encodeURIComponent(modules)}&corsDomain=finance.yahoo.com&crumb=${encodeURIComponent(c)}`;
+  const res = await yahooFetchWithBackoff(url);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchYahooEstimates(
+  symbol: string,
+  asof: string,
+): Promise<import("./prices-db").EstimateRow | null> {
+  const { parseQuoteSummaryEstimates } = await import("./estimates");
+  const json = await fetchQuoteSummaryJson(symbol);
+  if (!json) return null;
+  return parseQuoteSummaryEstimates(json, symbol, asof);
+}
+
+export async function fetchRealizedEps(symbol: string): Promise<import("./prices-db").RealizedEpsRow[]> {
+  const { parseFundamentalsTimeseries } = await import("./estimates");
+  const c = await ensureCrumb();
+  const period2 = Math.floor(Date.now() / 1000);
+  const period1 = period2 - 12 * 365 * 24 * 60 * 60;
+  const types = "annualDilutedEPS,quarterlyDilutedEPS,trailingDilutedEPS";
+  const qs = `lang=en-US&region=US&padTimeSeries=true&type=${types}&merge=false&period1=${period1}&period2=${period2}`;
+  const url = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?${qs}${c ? `&crumb=${encodeURIComponent(c)}` : ""}`;
+  const res = await yahooFetchWithBackoff(url);
+  if (!res.ok) return [];
+  const text = await res.text();
+  if (!text || text[0] !== "{" && text[0] !== "[") return [];
+  try {
+    return parseFundamentalsTimeseries(JSON.parse(text), symbol);
+  } catch {
+    return [];
+  }
+}
+
+/** Last price of a Yahoo FX pair such as USDCAD=X. */
+export async function fetchFxQuote(pair: string): Promise<number | null> {
+  const q = await fetchQuote(pair);
+  return q && q.price > 0 ? q.price : null;
 }
