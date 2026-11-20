@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { FundTotalReturnChart } from "@/components/lookthru/fund-history-chart";
 import { Badge } from "@/components/lookthru/ui/badge";
 import { Button } from "@/components/lookthru/ui/button";
 import { Input } from "@/components/lookthru/ui/input";
@@ -8,9 +9,26 @@ import { Skeleton } from "@/components/lookthru/ui/skeleton";
 import { lookupFundHoldings } from "@/lib/lookthru/analyze";
 import { formatPct } from "@/lib/lookthru/format";
 import type { FundHoldingKind, FundHoldingRow, FundLookupResult } from "@/lib/lookthru/fund-lookup";
+import type { TickerSearchHit } from "@/lib/lookthru/ticker-search";
 import { cn } from "@/lib/utils";
 
 const MAX_NEST = 3;
+type SearchResponse = { query: string; results: TickerSearchHit[] };
+
+function useTickerSuggest(query: string, enabled: boolean) {
+  return useQuery<TickerSearchHit[]>({
+    queryKey: ["ticker-search", query],
+    enabled: enabled && query.trim().length > 0,
+    staleTime: 30 * 1000,
+    queryFn: async () => {
+      const res = await fetch(`/api/tickers/search?q=${encodeURIComponent(query.trim())}`);
+      const data = (await res.json().catch(() => null)) as SearchResponse | null;
+      return data?.results ?? [];
+    },
+  });
+}
+
+
 
 function useFund(ticker: string | null) {
   return useQuery<FundLookupResult>({
@@ -33,38 +51,128 @@ function KindBadge({ kind }: { kind: FundHoldingKind }) {
 export function FundLookup() {
   const [text, setText] = useState("");
   const [trail, setTrail] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
   const current = trail.at(-1) ?? null;
   const query = useFund(current);
+  const suggest = useTickerSuggest(text, open);
+  const hits = suggest.data ?? [];
 
-  function open(ticker: string, push: boolean) {
+  useEffect(() => {
+    setActive(0);
+  }, [text]);
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  function lookup(ticker: string, push: boolean) {
     const t = ticker.trim();
     if (!t) return;
     setText(t);
+    setOpen(false);
     setTrail((prev) => (push ? [...prev, t] : [t]));
+  }
+
+  function pick(hit: TickerSearchHit) {
+    lookup(hit.ticker, false);
+  }
+
+  function resolvedSubmit(): string {
+    const typed = text.trim();
+    if (!typed) return "";
+    const hit = hits[active] ?? hits.find((h) => h.ticker.toUpperCase() === typed.toUpperCase() || h.displaySymbol.toUpperCase() === typed.toUpperCase());
+    return hit?.ticker ?? typed;
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    open(text, false);
+    const t = resolvedSubmit();
+    if (t) lookup(t, false);
+  }
+
+  function onKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      if (!hits.length) return;
+      e.preventDefault();
+      setActive((i) => (i + 1) % hits.length);
+    } else if (e.key === "ArrowUp") {
+      if (!hits.length) return;
+      e.preventDefault();
+      setActive((i) => (i - 1 + hits.length) % hits.length);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    } else if (e.key === "Enter" && open && hits[active]) {
+      e.preventDefault();
+      pick(hits[active]!);
+    }
   }
 
   return (
     <div className="space-y-4">
       <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <label className="min-w-0 flex-1 space-y-1.5">
-          <span className="text-xs font-medium tracking-wide text-muted">Fund ticker</span>
-          <Input
-            list="lookthru-tickers"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="HDIV, HYLD.TO, BMAX"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            className="font-mono uppercase"
-            aria-label="Fund ticker"
-          />
-        </label>
+        <div ref={boxRef} className="relative min-w-0 flex-1 space-y-1.5">
+          <label className="block space-y-1.5">
+            <span className="text-xs font-medium tracking-wide text-muted">Fund ticker</span>
+            <Input
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => setOpen(true)}
+              onKeyDown={onKey}
+              placeholder="HDIV, HYLD.TO, BMAX"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="font-mono uppercase"
+              role="combobox"
+              aria-label="Fund ticker"
+              aria-autocomplete="list"
+              aria-expanded={open && hits.length > 0}
+              aria-controls={listId}
+              aria-activedescendant={open && hits[active] ? `${listId}-${hits[active]!.ticker}` : undefined}
+            />
+          </label>
+          {open && hits.length > 0 ? (
+            <ul
+              id={listId}
+              role="listbox"
+              className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-line bg-surface py-1 shadow-lg"
+            >
+              {hits.map((hit, i) => (
+                <li key={hit.ticker} role="option" id={`${listId}-${hit.ticker}`} aria-selected={i === active}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left",
+                      i === active ? "bg-elevated" : "hover:bg-elevated/60",
+                    )}
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => pick(hit)}
+                  >
+                    <span className="font-mono text-sm">{hit.ticker}</span>
+                    <span className="text-xs text-muted">
+                      {hit.name}
+                      {hit.provider ? ` · ${hit.provider}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
         <Button type="submit" className="h-11 w-full sm:w-auto" disabled={!text.trim()}>
           <Search />
           Look up
@@ -108,7 +216,7 @@ export function FundLookup() {
           The lookup failed. Try again in a moment.
         </p>
       ) : query.data ? (
-        <FundResult result={query.data} onOpen={(t) => open(t, true)} />
+        <FundResult result={query.data} onOpen={(t) => lookup(t, true)} />
       ) : null}
     </div>
   );
@@ -155,6 +263,7 @@ function FundResult({ result, onOpen }: { result: FundLookupResult; onOpen: (t: 
         </dl>
       </section>
       <HoldingsTable rows={result.holdings} onOpen={onOpen} depth={0} ancestors={[result.symbol]} />
+      <FundTotalReturnChart ticker={result.symbol} />
     </div>
   );
 }
