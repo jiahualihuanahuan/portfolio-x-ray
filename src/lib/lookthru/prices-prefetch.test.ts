@@ -8,6 +8,7 @@ import {
   ensureTickerHistory,
   fetchAndStoreTicker,
   incrementalPeriod,
+  isSparseDaily,
   msUntilNextTorontoHour,
   planPrefetch,
   runPrefetch,
@@ -100,14 +101,16 @@ describe("prices db and prefetch", () => {
     const meta = await fetchAndStoreTicker("HMAX.TO", { fetch: fetchImpl, now: 1_000, dbPath, delayMs: 0 });
     assert.equal(meta.status, "ok");
     assert.equal(getPrices("HMAX.TO", dbPath).length, 3);
-    assert.match(calls[0]!, /range=max/);
+    assert.match(calls[0]!, /period1=/);
+    assert.doesNotMatch(calls[0]!, /range=max/);
+    const afterStore = calls.length;
 
     const hist = await ensureTickerHistory("hmax", { fetch: fetchImpl, dbPath });
     assert.equal(hist.status, "ok");
     if (hist.status !== "ok") return;
     assert.equal(hist.totalReturnSource, "adjclose");
     assert.equal(hist.dividendsIncluded, true);
-    assert.equal(calls.length, 1); // second read is cache-only
+    assert.equal(calls.length, afterStore); // second read is cache-only
   });
 
   it("uses an incremental Yahoo range after the first full fetch", async () => {
@@ -176,8 +179,10 @@ describe("prices db and prefetch", () => {
     assert.ok(result.ok >= 2);
     assert.ok(result.failed >= 1);
     assert.ok(result.elapsedMs >= 0);
-    const firstFunds = order.slice(0, 2);
-    assert.ok(firstFunds.includes("HHIS.TO") && firstFunds.includes("HMAX.TO"));
+    assert.ok(order.indexOf("VFV.TO") >= 0, "benchmarks are prefetched");
+    assert.ok(order.includes("HHIS.TO") && order.includes("HMAX.TO"));
+    const holdingIdx = Math.min(...["AMZN", "RY.TO"].map((t) => (order.indexOf(t) < 0 ? 999 : order.indexOf(t))));
+    assert.ok(order.indexOf("HMAX.TO") < holdingIdx);
   });
 
   it("retries after a 429 and then succeeds", async () => {
@@ -194,7 +199,7 @@ describe("prices db and prefetch", () => {
       },
     });
     assert.equal(meta.status, "ok");
-    assert.equal(n, 2);
+    assert.ok(n >= 2);
     assert.equal(hasCachedPrices("RY.TO", dbPath), true);
   });
 
@@ -210,7 +215,8 @@ describe("prices db and prefetch", () => {
     });
     assert.equal(hist.status, "ok");
     if (hist.status !== "ok") return;
-    assert.equal(n, 1);
+    assert.ok(n >= 1);
+    const fetched = n;
     assert.equal(hist.symbol, "HHIS.TO");
     const again = await ensureTickerHistory("hhis", {
       dbPath: fresh,
@@ -220,7 +226,14 @@ describe("prices db and prefetch", () => {
       },
     });
     assert.equal(again.status, "ok");
-    assert.equal(n, 1);
+    assert.equal(n, fetched);
+  });
+
+  it("treats weekly or monthly bars as too sparse for incremental updates", () => {
+    const daily = Array.from({ length: 20 }, (_, i) => `2024-01-${String(i + 1).padStart(2, "0")}`);
+    const weekly = ["2024-01-05", "2024-01-12", "2024-01-19", "2024-01-26", "2024-02-02", "2024-02-09", "2024-02-16", "2024-02-23"];
+    assert.equal(isSparseDaily(daily), false);
+    assert.equal(isSparseDaily(weekly), true);
   });
 
   it("computes a positive wait until the next 6 PM America/Toronto", () => {

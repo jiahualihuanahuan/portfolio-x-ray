@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DEFAULT_HOLDINGS_FILE, loadHoldingsFile, type FileFund } from "./holdings-file.ts";
+import { PREFETCH_BENCHMARK_TICKERS } from "./benchmarks.ts";
 import { displaySymbol, issuerKey } from "./tickers.ts";
 
 /**
@@ -139,6 +140,21 @@ export function loadTickerUniverse(opts?: { tickersPath?: string; holdingsPath?:
     if (!looksLikeTicker(rec.ticker) || seen.has(rec.ticker)) return;
     seen.add(rec.ticker);
     out.push({ ...rec, role });
+  }
+
+  for (const ticker of PREFETCH_BENCHMARK_TICKERS) {
+    add(
+      {
+        raw: [ticker],
+        ticker,
+        name: ticker,
+        provider: "",
+        exchange: "TSX",
+        isFund: true,
+        yahooVerified: true,
+      },
+      "fund",
+    );
   }
 
   const source = catalog && catalog.length ? catalog : fundsFromFile;

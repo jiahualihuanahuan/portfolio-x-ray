@@ -5,6 +5,7 @@ import {
   yahooChartUrl,
   unixFromDate,
   type FundHistoryResult,
+  type ParsedChart,
 } from "./fund-history.ts";
 import {
   getDividends,
@@ -29,6 +30,41 @@ export const YAHOO_UA =
 
 export const REQUEST_DELAY_MS = 500;
 const FETCH_TIMEOUT_MS = 20_000;
+
+const CHUNK_SECONDS = 5 * 365 * 86_400;
+const MAX_CHUNKS = 10;
+
+/** Yahoo range=max often returns weekly/monthly bars; a median gap over 3 days is treated as too sparse. */
+export function isSparseDaily(dates: string[]): boolean {
+  if (dates.length < 8) return false;
+  const ts = dates.map(unixFromDate).sort((a, b) => a - b);
+  const gaps: number[] = [];
+  for (let i = 1; i < ts.length; i++) gaps.push(ts[i]! - ts[i - 1]!);
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)]! > 3 * 86_400;
+}
+
+function mergeParsed(base: ParsedChart | null, next: ParsedChart): ParsedChart {
+  if (!base) return next;
+  const prices = new Map(base.prices.map((p) => [p.date, p]));
+  for (const p of next.prices) prices.set(p.date, p);
+  const dividends = new Map(base.dividends.map((d) => [d.date, d]));
+  for (const d of next.dividends) dividends.set(d.date, d);
+  const splits = new Map(base.splits.map((s) => [s.date, s]));
+  for (const s of next.splits) splits.set(s.date, s);
+  return {
+    symbol: next.symbol || base.symbol,
+    currency: next.currency ?? base.currency,
+    prices: [...prices.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    dividends: [...dividends.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    splits: [...splits.values()].sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
+function earliestDate(parsed: ParsedChart): string | null {
+  return parsed.prices[0]?.date ?? null;
+}
+
 const OVERLAP_DAYS = 3;
 const MAX_RETRIES = 3;
 
@@ -149,23 +185,69 @@ function markError(ticker: string, now: number, error: string, dbPath?: string):
   return meta;
 }
 
-/** Fetch one ticker from Yahoo and upsert into SQLite. Uses incremental range when last_date is known. */
-export async function fetchAndStoreTicker(ticker: string, deps: PrefetchDeps = {}): Promise<TickerMeta> {
-  const now = deps.now ?? Date.now();
-  const meta = getTickerMeta(ticker, deps.dbPath);
-  const url =
-    meta?.lastDate && meta.status === "ok"
-      ? yahooChartUrl(ticker, incrementalPeriod(meta.lastDate, now))
-      : yahooChartUrl(ticker);
+async function fetchParsed(
+  ticker: string,
+  url: string,
+  deps: PrefetchDeps,
+): Promise<{ parsed: ParsedChart | null; status: number } | { error: string }> {
   try {
     const res = await yahooGet(url, deps);
-    if (!res.ok) {
-      return markError(ticker, now, `Yahoo HTTP ${res.status}`, deps.dbPath);
-    }
+    if (!res.ok) return { parsed: null, status: res.status };
     const payload: unknown = await res.json();
-    const parsed = parseYahooChart(payload, ticker);
-    if (!parsed) return markError(ticker, now, "Yahoo returned no chart data.", deps.dbPath);
-    return storeParsed(ticker, parsed, now, deps.dbPath);
+    return { parsed: parseYahooChart(payload, ticker), status: res.status };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Fetch one ticker from Yahoo and upsert into SQLite.
+ * Incremental when last_date is known and the cache looks daily; otherwise 5-year daily chunks
+ * (Yahoo's range=max often downsamples to weekly/monthly).
+ */
+export async function fetchAndStoreTicker(ticker: string, deps: PrefetchDeps = {}): Promise<TickerMeta> {
+  const now = deps.now ?? Date.now();
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const delay = deps.delayMs ?? REQUEST_DELAY_MS;
+  const meta = getTickerMeta(ticker, deps.dbPath);
+  const cachedDates = getPrices(ticker, deps.dbPath).map((p) => p.date);
+  const incremental = Boolean(meta?.lastDate && meta.status === "ok" && !isSparseDaily(cachedDates));
+
+  if (incremental && meta?.lastDate) {
+    const url = yahooChartUrl(ticker, incrementalPeriod(meta.lastDate, now));
+    const got = await fetchParsed(ticker, url, deps);
+    if ("error" in got) return markError(ticker, now, got.error, deps.dbPath);
+    if (got.status !== 200) return markError(ticker, now, `Yahoo HTTP ${got.status}`, deps.dbPath);
+    if (!got.parsed) return markError(ticker, now, "Yahoo returned no chart data.", deps.dbPath);
+    return storeParsed(ticker, got.parsed, now, deps.dbPath);
+  }
+
+  try {
+    let period2 = Math.floor(now / 1000);
+    if (period2 < 86_400) period2 = Math.floor(Date.now() / 1000);
+    let merged: ParsedChart | null = null;
+    for (let i = 0; i < MAX_CHUNKS; i++) {
+      if (i > 0 && delay > 0) await sleep(delay);
+      const period1 = period2 - CHUNK_SECONDS;
+      const url = yahooChartUrl(ticker, { period1, period2 });
+      const got = await fetchParsed(ticker, url, deps);
+      if ("error" in got) {
+        if (merged) break;
+        return markError(ticker, now, got.error, deps.dbPath);
+      }
+      if (got.status !== 200 || !got.parsed || !got.parsed.prices.some((p) => p.close != null)) {
+        if (merged) break;
+        if (got.status !== 200) return markError(ticker, now, `Yahoo HTTP ${got.status}`, deps.dbPath);
+        return markError(ticker, now, "Yahoo returned no chart data.", deps.dbPath);
+      }
+      const before = merged ? earliestDate(merged) : null;
+      merged = mergeParsed(merged, got.parsed);
+      const after = earliestDate(merged);
+      if (before && after && after >= before) break;
+      period2 = period1 + OVERLAP_DAYS * 86_400;
+    }
+    if (!merged) return markError(ticker, now, "Yahoo returned no chart data.", deps.dbPath);
+    return storeParsed(ticker, merged, now, deps.dbPath);
   } catch (err) {
     return markError(ticker, now, err instanceof Error ? err.message : String(err), deps.dbPath);
   }
