@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiFundTickerRouteImport } from './routes/api/fund/$ticker'
 import { Route as ApiTickersSearchRouteImport } from './routes/api/tickers/search'
+import { Route as ApiValuationTickerRouteImport } from './routes/api/valuation/$ticker'
 import { Route as ApiFundTickerHistoryRouteImport } from './routes/api/fund/$ticker.history'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const ApiTickersSearchRoute = ApiTickersSearchRouteImport.update({
   path: '/api/tickers/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiValuationTickerRoute = ApiValuationTickerRouteImport.update({
+  id: '/api/valuation/$ticker',
+  path: '/api/valuation/$ticker',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiFundTickerHistoryRoute = ApiFundTickerHistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRoute
   '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
   '/api/tickers/search': typeof ApiTickersSearchRoute
+  '/api/valuation/$ticker': typeof ApiValuationTickerRoute
   '/api/fund/$ticker/history': typeof ApiFundTickerHistoryRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
   '/api/tickers/search': typeof ApiTickersSearchRoute
+  '/api/valuation/$ticker': typeof ApiValuationTickerRoute
   '/api/fund/$ticker/history': typeof ApiFundTickerHistoryRoute
 }
 export interface FileRoutesById {
@@ -61,6 +69,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRoute
   '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
   '/api/tickers/search': typeof ApiTickersSearchRoute
+  '/api/valuation/$ticker': typeof ApiValuationTickerRoute
   '/api/fund/$ticker/history': typeof ApiFundTickerHistoryRoute
 }
 export interface FileRouteTypes {
@@ -70,6 +79,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/fund/$ticker'
     | '/api/tickers/search'
+    | '/api/valuation/$ticker'
     | '/api/fund/$ticker/history'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -77,6 +87,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/fund/$ticker'
     | '/api/tickers/search'
+    | '/api/valuation/$ticker'
     | '/api/fund/$ticker/history'
   id:
     | '__root__'
@@ -84,6 +95,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/fund/$ticker'
     | '/api/tickers/search'
+    | '/api/valuation/$ticker'
     | '/api/fund/$ticker/history'
   fileRoutesById: FileRoutesById
 }
@@ -92,6 +104,7 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiFundTickerRoute: typeof ApiFundTickerRouteWithChildren
   ApiTickersSearchRoute: typeof ApiTickersSearchRoute
+  ApiValuationTickerRoute: typeof ApiValuationTickerRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -124,6 +137,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTickersSearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/valuation/$ticker': {
+      id: '/api/valuation/$ticker'
+      path: '/api/valuation/$ticker'
+      fullPath: '/api/valuation/$ticker'
+      preLoaderRoute: typeof ApiValuationTickerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/fund/$ticker/history': {
       id: '/api/fund/$ticker/history'
       path: '/history'
@@ -151,6 +171,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiFundTickerRoute: ApiFundTickerRouteWithChildren,
   ApiTickersSearchRoute: ApiTickersSearchRoute,
+  ApiValuationTickerRoute: ApiValuationTickerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

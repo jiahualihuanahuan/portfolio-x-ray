@@ -1,4 +1,6 @@
+import { ForwardPeValue } from "@/components/lookthru/valuation-card";
 import { formatMoney, formatPct } from "@/lib/lookthru/format";
+import type { ReactNode } from "react";
 import type { LookthroughResult } from "@/lib/lookthru/types";
 
 export function Kpis({ result }: { result: LookthroughResult }) {
@@ -17,14 +19,18 @@ export function Kpis({ result }: { result: LookthroughResult }) {
       value: formatPct(result.equityExposure, 0),
       hint: result.equityExposure > 1.02 ? "Includes modest ETF leverage" : undefined,
     },
+    {
+      label: "Forward P/E",
+      value: <ForwardPeValue leaves={result.leaves} />,
+    },
   ];
 
   return (
-    <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-line border border-line sm:grid-cols-5">
+    <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-line border border-line sm:grid-cols-3 lg:grid-cols-6">
       {items.map((item) => (
         <div key={item.label} className="bg-surface px-4 py-4">
           <p className="text-[11px] tracking-wide text-muted uppercase">{item.label}</p>
-          <p className="mt-1 font-mono text-lg tabular-nums text-fg">{item.value}</p>
+          <p className="mt-1 font-mono text-lg tabular-nums text-fg">{item.value as ReactNode}</p>
           {item.hint ? <p className="mt-1 text-[11px] text-subtle">{item.hint}</p> : null}
         </div>
       ))}

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { FundTotalReturnChart } from "@/components/lookthru/fund-history-chart";
+import { ValuationCard } from "@/components/lookthru/valuation-card";
 import { Badge } from "@/components/lookthru/ui/badge";
 import { Button } from "@/components/lookthru/ui/button";
 import { Input } from "@/components/lookthru/ui/input";
@@ -264,6 +265,7 @@ function FundResult({ result, onOpen }: { result: FundLookupResult; onOpen: (t: 
       </section>
       <HoldingsTable rows={result.holdings} onOpen={onOpen} depth={0} ancestors={[result.symbol]} />
       <FundTotalReturnChart ticker={result.symbol} />
+      <ValuationCard ticker={result.symbol} />
     </div>
   );
 }
