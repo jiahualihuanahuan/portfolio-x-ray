@@ -1,0 +1,12 @@
+node_modules
+.output
+.vercel
+screenshots
+artifacts
+.env
+*.log
+.DS_Store
+data/cache
+data/
+holdings.json
+*.csv
