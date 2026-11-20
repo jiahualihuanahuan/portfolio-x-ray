@@ -11,7 +11,15 @@ import type { HoldingLine } from "./types.ts";
  */
 export const DEFAULT_HOLDINGS_FILE = "/data/lookthru/holdings.json";
 
-export type FileFund = { asOf?: string; holdings: HoldingLine[] };
+export type FileFund = {
+  asOf?: string;
+  holdings: HoldingLine[];
+  /** Optional metadata written by scrape.py (issuer label, source URL, full/top-N scope). */
+  name?: string;
+  issuer?: string;
+  source?: string;
+  scope?: string;
+};
 
 type Loaded = { path: string; mtime: number; funds: Map<string, FileFund> };
 let loaded: Loaded | null = null;
@@ -51,4 +59,18 @@ export function fileHoldings(symbol: string, path?: string): FileFund | null {
   const hit = funds.get(symbol.toUpperCase()) ?? funds.get(stripShareClass(symbol));
   if (!hit || !holdingsAreUsable(hit.holdings)) return null;
   return hit;
+}
+
+/** Best-known display name for a symbol, from how other funds in the file label it as a holding. */
+export function fileHoldingName(symbol: string, path?: string): string | undefined {
+  const funds = loadHoldingsFile(path);
+  const want = symbol.toUpperCase();
+  const base = stripShareClass(symbol);
+  for (const fund of new Set(funds.values())) {
+    for (const h of fund.holdings) {
+      const s = (h.symbol || "").toUpperCase();
+      if (h.name && (s === want || (base && stripShareClass(s) === base))) return h.name;
+    }
+  }
+  return undefined;
 }

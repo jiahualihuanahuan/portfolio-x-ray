@@ -7,6 +7,7 @@ import { PortfolioEditor } from "@/components/lookthru/editor";
 import { Kpis } from "@/components/lookthru/kpis";
 import { LookthroughTable, PositionsTable } from "@/components/lookthru/tables";
 import { HoldingsTree } from "@/components/lookthru/tree";
+import { FundLookup } from "@/components/lookthru/fund-lookup";
 import { Skeleton } from "@/components/lookthru/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/lookthru/ui/tabs";
 import { analyzeHoldings } from "@/lib/lookthru/analyze";
@@ -80,6 +81,10 @@ export function LookthruApp() {
     );
   }, [analysis, positions, currency]);
 
+  // Same states as before the tabs became always-visible: loading while a portfolio
+  // exists but has no result yet, otherwise the empty prompt.
+  const portfolioPlaceholder = tickers.length > 0 ? <LoadingState /> : <EmptyState />;
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <Toaster theme="dark" position="bottom-right" />
@@ -102,11 +107,7 @@ export function LookthruApp() {
         disabled={!hydrated}
       />
 
-      {!result && tickers.length > 0 ? (
-        <LoadingState />
-      ) : tickers.length === 0 ? (
-        <EmptyState />
-      ) : result ? (
+      {result ? (
         <>
           <Kpis result={result} />
           {result.warnings.length ? (
@@ -116,33 +117,35 @@ export function LookthruApp() {
             <p className="text-xs text-down">Unresolved: {result.unresolved.join(", ")}</p>
           ) : null}
           <CompositionCharts result={result} />
-          <Tabs defaultValue="lookthrough">
-            <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
-              <TabsTrigger value="lookthrough">Look-through</TabsTrigger>
-              <TabsTrigger value="positions">Positions</TabsTrigger>
-              <TabsTrigger value="tree">Nested tree</TabsTrigger>
-            </TabsList>
-            <TabsContent value="lookthrough">
-              <LookthroughTable result={result} />
-            </TabsContent>
-            <TabsContent value="positions">
-              <PositionsTable
-                result={result}
-                onShares={updateShares}
-                onRemove={removePosition}
-              />
-            </TabsContent>
-            <TabsContent value="tree">
-              <HoldingsTree result={result} />
-            </TabsContent>
-          </Tabs>
         </>
-      ) : query.isError ? (
-        <p className="rounded-xl bg-surface p-6 text-sm text-muted border border-line">
-          Market data is unavailable right now. Holdings from the last disclosed files will appear
-          once quotes load.
-        </p>
       ) : null}
+
+      {/* Tabs are always reachable so Fund Lookup works without a portfolio; the three
+          portfolio tabs show the same loading / empty / error states as before. */}
+      <Tabs defaultValue="lookthrough">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
+          <TabsTrigger value="lookthrough">Look-through</TabsTrigger>
+          <TabsTrigger value="positions">Positions</TabsTrigger>
+          <TabsTrigger value="tree">Nested tree</TabsTrigger>
+          <TabsTrigger value="fund">Fund Lookup</TabsTrigger>
+        </TabsList>
+        <TabsContent value="lookthrough">
+          {result ? <LookthroughTable result={result} /> : portfolioPlaceholder}
+        </TabsContent>
+        <TabsContent value="positions">
+          {result ? (
+            <PositionsTable result={result} onShares={updateShares} onRemove={removePosition} />
+          ) : (
+            portfolioPlaceholder
+          )}
+        </TabsContent>
+        <TabsContent value="tree">
+          {result ? <HoldingsTree result={result} /> : portfolioPlaceholder}
+        </TabsContent>
+        <TabsContent value="fund" forceMount className="data-[state=inactive]:hidden">
+          <FundLookup />
+        </TabsContent>
+      </Tabs>
 
       <footer className="border-t border-line pt-4 text-[11px] text-subtle">
         Quotes delayed via Yahoo Finance. ETF weights come from each issuer’s latest
@@ -173,7 +176,8 @@ function EmptyState() {
       <p className="font-medium text-2xl tracking-tight">Add a holding to unroll it</p>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted">
         Try HDIV.TO for a Canadian covered-call wrapper, XLK for US tech, or HYLD.TO — funds of
-        ETFs that nest all the way down to names like RY, NVDA and AAPL.
+        ETFs that nest all the way down to names like RY, NVDA and AAPL. Or open Fund Lookup to
+        inspect a single fund without building a portfolio.
       </p>
     </section>
   );
