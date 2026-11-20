@@ -45,4 +45,26 @@ describe("lookthru holdings file", () => {
     assert.equal(fileHoldings("HDIV.TO", file), null);
     assert.equal(fileHoldings("ZWC.TO", file)?.asOf, "2026-11-18");
   });
+
+  it("keeps an optional country field on holdings", () => {
+    const later = path.join(dir, "holdings-country.json");
+    write(
+      later,
+      {
+        "HMAX.TO": {
+          asOf: "2026-10-30",
+          holdings: [
+            { symbol: "RY.TO", name: "Royal Bank of Canada", weight: 0.25, sector: "Financials", country: "Canada" },
+            { symbol: "AAPL", name: "Apple Inc", weight: 0.2, sector: "Information Technology", country: "United States" },
+            { symbol: "CASH", name: "Cash", weight: 0.01, sector: "Cash" },
+          ],
+        },
+      },
+      3000,
+    );
+    const hit = fileHoldings("HMAX.TO", later);
+    assert.equal(hit?.holdings[0]?.country, "Canada");
+    assert.equal(hit?.holdings[1]?.country, "United States");
+    assert.equal(hit?.holdings[2]?.country, undefined);
+  });
 });

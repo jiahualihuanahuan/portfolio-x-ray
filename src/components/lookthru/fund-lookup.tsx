@@ -298,6 +298,8 @@ function HoldingsTable({
               <th className="px-3 py-3 font-medium">Holding</th>
               <th className="px-3 py-3 font-medium">Ticker</th>
               <th className="px-3 py-3 font-medium">Kind</th>
+              <th className="px-3 py-3 font-medium">Sector</th>
+              <th className="px-3 py-3 font-medium">Country</th>
               <th className="px-3 py-3 text-right font-medium">Weight</th>
             </tr>
           </thead>
@@ -353,13 +355,15 @@ function HoldingRow({
         <td className="px-3 py-2">
           <KindBadge kind={row.kind} />
         </td>
+        <td className="px-3 py-2 text-xs text-muted">{row.sector || "—"}</td>
+        <td className="px-3 py-2 text-xs text-muted">{row.country || "—"}</td>
         <td className={cn("px-3 py-2 text-right font-mono tabular-nums", row.weight < 0 && "text-down")}>
           {formatPct(row.weight, 2)}
         </td>
       </tr>
       {expanded && row.lookup ? (
         <tr>
-          <td colSpan={5} className="px-2 pb-3 pl-8">
+          <td colSpan={7} className="px-2 pb-3 pl-8">
             <NestedFund ticker={row.lookup} onOpen={onOpen} depth={depth + 1} ancestors={[...ancestors, row.lookup]} />
           </td>
         </tr>

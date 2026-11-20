@@ -181,6 +181,44 @@ describe("this book: bitcoin, XEQT, Global X, Purpose cash", () => {
     assert.ok(!syms.has("BIGY") && !syms.has("CANY") && !syms.has("INTY"));
   });
 
+  it("carries country through to leaves and a country mix, excluding cash", () => {
+    const instruments: Record<string, Instrument> = {
+      "TEST.TO": {
+        symbol: "TEST.TO",
+        displaySymbol: "TEST",
+        name: "Test Fund",
+        kind: "etf",
+        currency: "CAD",
+        price: 10,
+        changePct: 0,
+        holdings: [
+          { symbol: "RY.TO", name: "Royal Bank of Canada", weight: 0.6, sector: "Financials", country: "Canada" },
+          { symbol: "AAPL", name: "Apple Inc", weight: 0.3, sector: "Information Technology", country: "United States" },
+          { symbol: "CASH", name: "Cash", weight: 0.1, sector: "Cash" },
+        ],
+        sectors: [],
+        source: "catalog",
+        coverage: 1,
+      },
+    };
+    const result = composeLookthrough(
+      [{ id: "1", ticker: "TEST.TO", shares: 10 }],
+      instruments,
+      { "TEST.TO": "TEST.TO" },
+      1.37,
+      "CAD",
+    );
+    const ry = result.leaves.find((l) => l.displaySymbol === "RY");
+    const aapl = result.leaves.find((l) => l.displaySymbol === "AAPL");
+    assert.equal(ry?.country, "Canada");
+    assert.equal(aapl?.country, "United States");
+    const names = result.countries.map((c) => c.name);
+    assert.ok(names.includes("Canada") && names.includes("United States"));
+    assert.ok(!names.includes("Cash") && !names.includes("Cash & leverage"));
+    const canada = result.countries.find((c) => c.name === "Canada");
+    assert.ok(canada && Math.abs(canada.weight - 0.6) < 1e-9);
+  });
+
   it("catalogs every ETF in the loaded book", () => {
     const skip = new Set([
       "CASH",

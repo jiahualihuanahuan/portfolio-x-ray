@@ -21,8 +21,8 @@ const HDIV: HoldingLine[] = [
   { symbol: "OPTIONS", name: "Options overlay", weight: -0.004, sector: "Options" },
 ];
 const HMAX: HoldingLine[] = [
-  { symbol: "RY.TO", name: "Royal Bank of Canada", weight: 0.12, sector: "Financials" },
-  { symbol: "TD.TO", name: "Toronto-Dominion Bank", weight: 0.11, sector: "Financials" },
+  { symbol: "RY.TO", name: "Royal Bank of Canada", weight: 0.12, sector: "Financials", country: "Canada" },
+  { symbol: "TD.TO", name: "Toronto-Dominion Bank", weight: 0.11, sector: "Financials", country: "Canada" },
   { symbol: "OTHER", name: "Other holdings", weight: 0.01 },
 ];
 
@@ -63,6 +63,15 @@ describe("fund lookup", () => {
     assert.equal(rows[1]!.lookup, "HMAX.TO");
     assert.equal(rows[1]!.displaySymbol, "HMAX");
     assert.equal(rows[3]!.lookup, null);
+  });
+
+  it("passes country through to fund-lookup rows", () => {
+    const rows = shapeHoldings(HMAX, () => false);
+    const ry = rows.find((r) => r.symbol === "RY.TO");
+    assert.equal(ry?.sector, "Financials");
+    assert.equal(ry?.country, "Canada");
+    const other = rows.find((r) => r.symbol === "OTHER");
+    assert.equal(other?.country, undefined);
   });
 
   it("returns the fund's holdings, as-of, source and coverage from the file", async () => {

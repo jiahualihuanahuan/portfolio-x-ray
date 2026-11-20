@@ -138,6 +138,7 @@ export function LookthroughTable({ result }: { result: LookthroughResult }) {
           <tr className="border-b border-line">
             <th className="px-4 py-3 font-medium">Underlying</th>
             <th className="px-4 py-3 font-medium">Sector</th>
+            <th className="px-4 py-3 font-medium">Country</th>
             <th className="px-4 py-3 text-right font-medium">Value</th>
             <th className="px-4 py-3 font-medium">Of portfolio</th>
             <th className="px-4 py-3 font-medium">Via</th>
@@ -154,6 +155,7 @@ export function LookthroughTable({ result }: { result: LookthroughResult }) {
                 <p className="max-w-[280px] truncate text-xs text-muted">{leaf.name}</p>
               </td>
               <td className="px-4 py-3 text-xs text-muted">{leaf.sector}</td>
+              <td className="px-4 py-3 text-xs text-muted">{leaf.country || "—"}</td>
               <td className="px-4 py-3 text-right font-mono tabular-nums">
                 {formatMoney(leaf.value, result.currency)}
               </td>

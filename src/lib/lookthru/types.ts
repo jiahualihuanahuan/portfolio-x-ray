@@ -7,6 +7,7 @@ export type HoldingLine = {
   name: string;
   weight: number;
   sector?: string;
+  country?: string;
 };
 
 export type Instrument = {
@@ -36,6 +37,7 @@ export type LeafExposure = {
   name: string;
   kind: AssetKind;
   sector: string;
+  country?: string;
   value: number;
   weight: number;
   sources: { from: string; weight: number; value: number }[];
@@ -67,6 +69,7 @@ export type TreeNode = {
   weightOfNav: number;
   value: number;
   sector?: string;
+  country?: string;
   children: TreeNode[];
 };
 
@@ -77,6 +80,7 @@ export type LookthroughResult = {
   positions: PositionView[];
   leaves: LeafExposure[];
   sectors: { name: string; value: number; weight: number }[];
+  countries: { name: string; value: number; weight: number }[];
   trees: TreeNode[];
   unresolved: string[];
   warnings: string[];

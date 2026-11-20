@@ -33,14 +33,28 @@ export function CompositionCharts({ result }: { result: LookthroughResult }) {
       value: s.value,
     }));
 
+  const countries = (result.countries ?? [])
+    .filter((s) => s.weight > 0)
+    .slice(0, 8)
+    .map((s) => ({
+      name: shortCountry(s.name),
+      weight: Math.round(s.weight * 1000) / 10,
+      value: s.value,
+    }));
+
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="space-y-4">
       <ChartCard title="Top underlying stocks" subtitle="NAV is the portfolio’s value. This is each stock’s share of that value.">
         <BarBlock data={top} currency={result.currency} />
       </ChartCard>
-      <ChartCard title="Sector mix" subtitle="Look-through means opening each fund and counting the stocks inside, including a fund that holds other funds.">
-        <BarBlock data={sectors} currency={result.currency} />
-      </ChartCard>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartCard title="Sector mix" subtitle="Look-through means opening each fund and counting the stocks inside, including a fund that holds other funds.">
+          <BarBlock data={sectors} currency={result.currency} />
+        </ChartCard>
+        <ChartCard title="Country mix" subtitle="Look-through country weights, excluding cash, options and other, and names with no country tag.">
+          <BarBlock data={countries} currency={result.currency} yWidth={110} />
+        </ChartCard>
+      </div>
     </div>
   );
 }
@@ -66,9 +80,11 @@ function ChartCard({
 function BarBlock({
   data,
   currency,
+  yWidth = 78,
 }: {
   data: { name: string; weight: number; value: number }[];
   currency: LookthroughResult["currency"];
+  yWidth?: number;
 }) {
   if (!data.length) {
     return <p className="text-sm text-muted">No composition yet.</p>;
@@ -86,7 +102,7 @@ function BarBlock({
         <YAxis
           type="category"
           dataKey="name"
-          width={78}
+          width={yWidth}
           tick={{ fill: "var(--color-fg)", fontSize: 11, fontFamily: "var(--font-mono)" }}
           axisLine={false}
           tickLine={false}
@@ -123,4 +139,12 @@ function shortSector(name: string): string {
     .replace("Consumer Staples", "Staples")
     .replace("Communication Services", "Comm.")
     .replace("Cash & leverage", "Cash");
+}
+
+function shortCountry(name: string): string {
+  return name
+    .replace("United States", "U.S.")
+    .replace("United Kingdom", "U.K.")
+    .replace("Netherlands Antilles", "Neth. Ant.")
+    .replace("South Korea", "S. Korea");
 }

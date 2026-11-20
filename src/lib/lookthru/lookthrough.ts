@@ -99,12 +99,14 @@ export function composeLookthrough(
     value: number,
     from: string,
     contribWeight: number,
+    country?: string,
   ) {
     const key = equityKey(symbol);
     const existing = leafMap.get(key);
     if (existing) {
       existing.value += value;
       existing.sources.push({ from, weight: contribWeight, value });
+      if (!existing.country && country) existing.country = country;
       return;
     }
     leafMap.set(key, {
@@ -113,6 +115,7 @@ export function composeLookthrough(
       name,
       kind,
       sector,
+      country,
       value,
       weight: 0,
       sources: [{ from, weight: contribWeight, value }],
@@ -127,6 +130,7 @@ export function composeLookthrough(
     depth: number,
     trail: Set<string>,
     sectorHint?: string,
+    countryHint?: string,
   ): TreeNode {
     const inst = instrumentOf(symbol, instruments);
     const name = inst?.name ?? nameHint;
@@ -141,6 +145,7 @@ export function composeLookthrough(
       weightOfNav,
       value,
       sector: sectorHint ?? (inst ? sectorOf(inst.symbol) : sectorOf(symbol)),
+      country: countryHint,
       children: [],
     };
 
@@ -154,6 +159,7 @@ export function composeLookthrough(
         value,
         [...trail].pop() ?? display,
         weightOfNav,
+        node.country,
       );
       return node;
     }
@@ -174,6 +180,7 @@ export function composeLookthrough(
         depth + 1,
         nextTrail,
         h.sector,
+        h.country,
       );
       child.weightOfParent = h.weight;
       node.children.push(child);
@@ -221,6 +228,16 @@ export function composeLookthrough(
     .map(([name, value]) => ({ name, value, weight: nav > 0 ? value / nav : 0 }))
     .sort((a, b) => b.value - a.value);
 
+  const countryMap = new Map<string, number>();
+  for (const leaf of leaves) {
+    if (leaf.kind === "cash" || leaf.kind === "other") continue;
+    if (!leaf.country) continue;
+    countryMap.set(leaf.country, (countryMap.get(leaf.country) ?? 0) + leaf.value);
+  }
+  const countries = [...countryMap.entries()]
+    .map(([name, value]) => ({ name, value, weight: nav > 0 ? value / nav : 0 }))
+    .sort((a, b) => b.value - a.value);
+
   const equityExposure = leaves
     .filter((l) => l.kind === "equity" || l.kind === "etf")
     .reduce((s, l) => s + l.weight, 0);
@@ -232,6 +249,7 @@ export function composeLookthrough(
     positions: views,
     leaves,
     sectors,
+    countries,
     trees,
     unresolved,
     warnings,

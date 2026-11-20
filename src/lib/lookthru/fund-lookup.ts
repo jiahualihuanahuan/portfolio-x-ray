@@ -18,6 +18,7 @@ export type FundHoldingRow = {
   /** Fraction of the fund (0.199 = 19.9%). Leverage can make cash negative. */
   weight: number;
   sector?: string;
+  country?: string;
   /** Ticker to look up next when this holding is itself a fund; null otherwise. */
   lookup: string | null;
 };
@@ -112,6 +113,7 @@ export function shapeHoldings(holdings: HoldingLine[], isFund: (symbol: string) 
         kind,
         weight: h.weight,
         sector: h.sector,
+        country: h.country,
         lookup: kind === "fund" && h.symbol ? h.symbol : null,
       };
     })
