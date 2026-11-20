@@ -77,6 +77,7 @@ export type PrefetchDeps = {
   tickersPath?: string;
   holdingsPath?: string;
   onTicker?: (event: { ticker: string; status: "ok" | "error" | "empty" | "skipped"; error?: string }) => void;
+  skipEstimates?: boolean;
 };
 
 export type PrefetchResult = {
@@ -301,6 +302,8 @@ export async function ensureTickerHistory(raw: string, deps: PrefetchDeps = {}):
 
 export type StalePlan = { ticker: string; stale: boolean };
 
+export const FX_PREFETCH_TICKERS = ["USDCAD=X", "EURUSD=X", "GBPUSD=X", "USDJPY=X"] as const;
+
 export function planPrefetch(deps: PrefetchDeps = {}): { refresh: string[]; skip: string[] } {
   const now = deps.now ?? Date.now();
   const universe = loadTickerUniverse({ tickersPath: deps.tickersPath, holdingsPath: deps.holdingsPath });
@@ -310,6 +313,13 @@ export function planPrefetch(deps: PrefetchDeps = {}): { refresh: string[]; skip
     const meta = getTickerMeta(rec.ticker, deps.dbPath);
     if (isTickerStale(meta, now, STALE_AFTER_MS)) refresh.push(rec.ticker);
     else skip.push(rec.ticker);
+  }
+  // Cached FX rates for EPS that report in a different currency than they trade (e.g. SHOP.TO).
+  for (const fx of FX_PREFETCH_TICKERS) {
+    if (refresh.includes(fx) || skip.includes(fx)) continue;
+    const meta = getTickerMeta(fx, deps.dbPath);
+    if (isTickerStale(meta, now, STALE_AFTER_MS)) refresh.push(fx);
+    else skip.push(fx);
   }
   return { refresh, skip };
 }
@@ -336,6 +346,20 @@ export async function runPrefetch(deps: PrefetchDeps = {}): Promise<PrefetchResu
     }
   }
   for (const ticker of skip) deps.onTicker?.({ ticker, status: "skipped" });
+  const inTest = typeof process.env["NODE_TEST_CONTEXT"] === "string";
+  if (!deps.skipEstimates && !inTest) try {
+    const { prefetchEstimates } = await import("./estimates-prefetch.ts");
+    await prefetchEstimates({
+      dbPath: deps.dbPath,
+      holdingsPath: deps.holdingsPath,
+      tickersPath: deps.tickersPath,
+      delayMs: delay,
+      sleep,
+      now: deps.now,
+    });
+  } catch (err) {
+    console.error("[prices] estimate prefetch failed:", err);
+  }
   return { ok, failed, skipped: skip.length, elapsedMs: Date.now() - started };
 }
 
