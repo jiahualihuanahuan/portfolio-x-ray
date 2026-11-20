@@ -27,12 +27,19 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--experimental-sqlite \
     LOOKTHRU_HOLDINGS_FILE=/data/lookthru/holdings.json \
     LOOKTHRU_TICKERS_FILE=/data/lookthru/tickers.json \
-    PRICES_DB_FILE=/data/lookthru/prices.sqlite
+    PRICES_DB_FILE=/data/lookthru/prices.sqlite \
+    OLLAMA_URL=http://192.168.86.35:11434 \
+    OLLAMA_MODEL=qwen3.5:9b \
+    SEARCH_URL=http://192.168.86.35:8099 \
+    SEARCH_ENGINE=searxng
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /data/lookthru && chown -R node:node /data
+  && mkdir -p /data/lookthru /app/scripts && chown -R node:node /data /app
 COPY --from=build --chown=node:node /app/.output ./.output
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/scripts/etf-notes.mjs /app/scripts/etf-notes-lib.mjs ./scripts/
+COPY --from=build --chown=node:node /app/scripts/prompts ./scripts/prompts
 USER node
 EXPOSE 8096
 HEALTHCHECK --interval=30s --timeout=8s --start-period=30s --retries=5 \

@@ -17,3 +17,7 @@ holdings.json
 *.sqlite-shm
 prices.sqlite
 tickers.json
+
+# Generated ETF notes (never commit)
+etf-notes.md
+etf-notes.json
