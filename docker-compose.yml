@@ -22,6 +22,9 @@ services:
       NITRO_HOST: "0.0.0.0"
       TZ: ${TZ:-America/Toronto}
       LOOKTHRU_HOLDINGS_FILE: ${LOOKTHRU_HOLDINGS_FILE:-/data/lookthru/holdings.json}
+      LOOKTHRU_TICKERS_FILE: ${LOOKTHRU_TICKERS_FILE:-/data/lookthru/tickers.json}
+      PRICES_DB_FILE: ${PRICES_DB_FILE:-/data/lookthru/prices.sqlite}
+      PRICES_PREFETCH: ${PRICES_PREFETCH:-1}
     volumes:
       - portfolio-x-ray-data:/data
     logging:

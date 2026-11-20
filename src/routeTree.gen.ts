@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiFundTickerRouteImport } from './routes/api/fund/$ticker'
+import { Route as ApiTickersSearchRouteImport } from './routes/api/tickers/search'
+import { Route as ApiFundTickerHistoryRouteImport } from './routes/api/fund/$ticker.history'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +30,68 @@ const ApiFundTickerRoute = ApiFundTickerRouteImport.update({
   path: '/api/fund/$ticker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTickersSearchRoute = ApiTickersSearchRouteImport.update({
+  id: '/api/tickers/search',
+  path: '/api/tickers/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFundTickerHistoryRoute = ApiFundTickerHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => ApiFundTickerRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/fund/$ticker': typeof ApiFundTickerRoute
+  '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
+  '/api/tickers/search': typeof ApiTickersSearchRoute
+  '/api/fund/$ticker/history': typeof ApiFundTickerHistoryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/fund/$ticker': typeof ApiFundTickerRoute
+  '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
+  '/api/tickers/search': typeof ApiTickersSearchRoute
+  '/api/fund/$ticker/history': typeof ApiFundTickerHistoryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/fund/$ticker': typeof ApiFundTickerRoute
+  '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
+  '/api/tickers/search': typeof ApiTickersSearchRoute
+  '/api/fund/$ticker/history': typeof ApiFundTickerHistoryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/health' | '/api/fund/$ticker'
+  fullPaths:
+    | '/'
+    | '/api/health'
+    | '/api/fund/$ticker'
+    | '/api/tickers/search'
+    | '/api/fund/$ticker/history'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/health' | '/api/fund/$ticker'
-  id: '__root__' | '/' | '/api/health' | '/api/fund/$ticker'
+  to:
+    | '/'
+    | '/api/health'
+    | '/api/fund/$ticker'
+    | '/api/tickers/search'
+    | '/api/fund/$ticker/history'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/health'
+    | '/api/fund/$ticker'
+    | '/api/tickers/search'
+    | '/api/fund/$ticker/history'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiHealthRoute: typeof ApiHealthRoute
-  ApiFundTickerRoute: typeof ApiFundTickerRoute
+  ApiFundTickerRoute: typeof ApiFundTickerRouteWithChildren
+  ApiTickersSearchRoute: typeof ApiTickersSearchRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,13 +117,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFundTickerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tickers/search': {
+      id: '/api/tickers/search'
+      path: '/api/tickers/search'
+      fullPath: '/api/tickers/search'
+      preLoaderRoute: typeof ApiTickersSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fund/$ticker/history': {
+      id: '/api/fund/$ticker/history'
+      path: '/history'
+      fullPath: '/api/fund/$ticker/history'
+      preLoaderRoute: typeof ApiFundTickerHistoryRouteImport
+      parentRoute: typeof ApiFundTickerRoute
+    }
   }
 }
+
+interface ApiFundTickerRouteChildren {
+  ApiFundTickerHistoryRoute: typeof ApiFundTickerHistoryRoute
+}
+
+const ApiFundTickerRouteChildren: ApiFundTickerRouteChildren = {
+  ApiFundTickerHistoryRoute: ApiFundTickerHistoryRoute,
+}
+
+const ApiFundTickerRouteWithChildren = ApiFundTickerRoute._addFileChildren(
+  ApiFundTickerRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiHealthRoute: ApiHealthRoute,
-  ApiFundTickerRoute: ApiFundTickerRoute,
+  ApiFundTickerRoute: ApiFundTickerRouteWithChildren,
+  ApiTickersSearchRoute: ApiTickersSearchRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

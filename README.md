@@ -30,6 +30,13 @@ docker compose cp <path>/lookthru/holdings.json portfolio-x-ray:/data/lookthru/h
 Format: `{"funds": {"HMAX.TO": {"asOf": "2026-10-30", "holdings": [{"symbol": "RY.TO", "name": "...", "weight": 0.245, "sector": "..."}]}}}`,
 with weights as fractions (0.245 = 24.5%).
 
+The Fund Lookup tab can autocomplete tickers from `/data/lookthru/tickers.json` (override with
+`LOOKTHRU_TICKERS_FILE`; it defaults next to the holdings file). If that file is missing, it falls
+back to the fund keys in holdings.json. Price history for the total-return chart is cached in
+`/data/lookthru/prices.sqlite` (`PRICES_DB_FILE`), filled on demand and by a background prefetch
+at startup and around 6 PM America/Toronto. Disable the job with `PRICES_PREFETCH=0`. Run it once
+with `npm run prefetch`.
+
 ## Dev
 
 `npm ci && npm run dev` (port 8080 in dev) · `npm test` · `npm run typecheck` · `npm run build`

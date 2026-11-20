@@ -23,7 +23,11 @@ ENV NODE_ENV=production \
     PORT=8096 \
     HOST=0.0.0.0 \
     NITRO_HOST=0.0.0.0 \
-    TZ=America/Toronto
+    TZ=America/Toronto \
+    NODE_OPTIONS=--experimental-sqlite \
+    LOOKTHRU_HOLDINGS_FILE=/data/lookthru/holdings.json \
+    LOOKTHRU_TICKERS_FILE=/data/lookthru/tickers.json \
+    PRICES_DB_FILE=/data/lookthru/prices.sqlite
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
