@@ -28,8 +28,17 @@ import {
 import { stripShareClass } from "./tickers.ts";
 import type { HoldingLine } from "./types.ts";
 
-export const PROVIDER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-export const BROMPTON_DELAY_MS = 10_000;
+function envNumber(key: string, fallback: number): number {
+  const raw = (typeof process !== "undefined" ? process.env[key] : undefined)?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+/** How long a cached provider list stays fresh (PROVIDER_CACHE_TTL_HOURS, default 168 = 7 days). */
+export const PROVIDER_TTL_MS = envNumber("PROVIDER_CACHE_TTL_HOURS", 168) * 60 * 60 * 1000;
+/** Gap between requests to bromptongroup.com (PROVIDER_FETCH_DELAY_MS). Never below the site's 10 s crawl delay. */
+export const BROMPTON_DELAY_MS = Math.max(10_000, envNumber("PROVIDER_FETCH_DELAY_MS", 10_000));
+/** Background re-check interval (PROVIDER_REFRESH_HOURS, default 24). */
+export const PROVIDER_REFRESH_MS = envNumber("PROVIDER_REFRESH_HOURS", 24) * 60 * 60 * 1000;
 export const YAHOO_SEARCH_DELAY_MS = 1_100;
 const FETCH_MS = 20_000;
 const UA =
@@ -361,7 +370,7 @@ export function startProviderHoldingsWarmup(): void {
   };
   const loop = () => {
     void run().finally(() => {
-      warmTimer = setTimeout(loop, 24 * 60 * 60 * 1000);
+      warmTimer = setTimeout(loop, PROVIDER_REFRESH_MS);
       warmTimer.unref?.();
     });
   };

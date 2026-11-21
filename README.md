@@ -10,7 +10,73 @@ cd portfolio-x-ray
 docker compose up -d --build
 ```
 
-Open `http://<this-machine>:8097` (change with `HOST_PORT=…`; the default avoids 8096, which Jellyfin uses). The container still listens on 8096 internally. Positions are stored in this browser only.
+Open `http://<this-machine>:8097` (change with `HOST_PORT=…`; the default avoids 8096, which Jellyfin uses). The container still listens on 8096 internally. Positions, targets and settings are stored in this browser only (localStorage).
+
+## Settings (.env)
+
+Every setting is optional. Copy the template and edit it:
+
+```bash
+cp .env.example .env    # .env is gitignored; never commit it
+docker compose up -d --build
+```
+
+`.env.example` lists every variable the app reads, with a one-line comment each (Ollama, FX, rebalance
+default, ports, data/cache paths, background fetch timing, ETF-notes script). docker-compose loads `.env`
+through `env_file` with `required: false` (Docker Compose 2.24+), so the app starts without it.
+Put your own LAN addresses only in `.env`.
+
+## Tabs
+
+1. **ETF breakdown** — pick one ETF and an amount in C$ (default C$10,000). Shows only that fund's
+   holdings, unrolled through every fund-of-funds layer to single stocks with the same look-through engine
+   (leverage shows as negative cash). Includes KPIs, Forward P/E, sector/country mix, an
+   **Ask about this ETF** panel (local Ollama, below) and, folded away, the one-layer Fund details
+   (direct holdings, total-return chart, valuation).
+2. **Full portfolio** — add many tickers with share counts (or paste a list). Everything is broken down to
+   individual stocks; sub-tabs for Look-through, Positions and Nested tree.
+3. **Target & rebalance** — set targets in C$ per ticker and/or per sector.
+   - Deviation is relative: `|actual − target| ÷ target`. A row is flagged when it is **more than** the
+     alert band (default 10%, editable in the tab; server default `REBALANCE_THRESHOLD_PCT`). A target of 0
+     with any holding is always flagged.
+   - **Ticker** targets compare with the value of the position held directly in that ticker (Full portfolio
+     tab). If the ticker is only held inside ETFs, its look-through exposure is shown for reference.
+   - **Sector** targets compare with look-through sector exposure (all ETFs unrolled).
+   - Only flagged rows get a suggested trade, sized to return that row exactly to target.
+     *Sell & buy*: sell overweight, buy underweight; the footer shows total sells, buys and the net new cash
+     needed (or cash freed). *Buy-only*: buys for underweight rows with new cash, never sells; overweight
+     rows stay as they are and the footer shows the cash needed.
+   - Ticker and sector targets are two separate views. If both apply to the same money, both are shown and
+     neither takes priority.
+   - Holdings, targets, band and mode are shared across tabs and saved in this browser.
+
+## Currency: everything in CAD
+
+All amounts are in Canadian dollars (shown as C$). USD-priced securities are converted with the live Yahoo
+`USDCAD=X` rate (`FX_PAIR`), refreshed every 5 minutes and saved to `/data/lookthru/fx-usdcad.json`
+(`FX_CACHE_FILE`). The header shows the rate, whether it is live, cached or manual, and when it was
+fetched (Toronto time). If Yahoo is unreachable the last saved rate is used. If there is no saved rate either,
+the app shows an error instead of guessing a rate. Set `FX_USDCAD_OVERRIDE=1.37` to use a fixed rate
+instead; the header then labels it "manual". The Positions table shows the CAD price with the original
+USD quote beneath it.
+
+## Ask about this ETF (local Ollama)
+
+The ETF breakdown tab can answer questions such as "what does BMAX do?" using a local
+[Ollama](https://ollama.com) model. The server (`POST /api/ask`) sends Ollama `/api/chat` (streaming) a
+system prompt built from that ETF's look-through: name, provider, as-of date and source, top holdings with
+weights, sector mix, cash/leverage, the funds it holds and any partial-coverage caveats. The model is told
+to answer only from that data and to say when it doesn't know. `<think>` blocks (qwen) are removed.
+
+```bash
+# .env
+OLLAMA_URL=http://host.docker.internal:11434   # Ollama on the Docker host, or http://<your-ollama-host>:11434
+OLLAMA_MODEL=qwen3.5:9b
+```
+
+`docker-compose.yml` maps `host.docker.internal` to the host (`extra_hosts: host-gateway`). If Ollama runs on
+the Docker host itself, start it with `OLLAMA_HOST=0.0.0.0` so the container can reach it. If `OLLAMA_URL` is
+unset, unreachable or the model is missing, the panel says so; the rest of the app is unaffected.
 
 Data: a pre-scraped holdings file if you provide one, then the issuers' public holdings pages and Yahoo Finance (unofficial).
 No API keys, no accounts. Not investment advice.
@@ -30,7 +96,7 @@ docker compose cp <path>/lookthru/holdings.json portfolio-x-ray:/data/lookthru/h
 Format: `{"funds": {"HMAX.TO": {"asOf": "2026-10-30", "holdings": [{"symbol": "RY.TO", "name": "...", "weight": 0.245, "sector": "..."}]}}}`,
 with weights as fractions (0.245 = 24.5%).
 
-The Fund Lookup tab can autocomplete tickers from `/data/lookthru/tickers.json` (override with
+The ETF breakdown ticker box can autocomplete tickers from `/data/lookthru/tickers.json` (override with
 `LOOKTHRU_TICKERS_FILE`; it defaults next to the holdings file). If that file is missing, it falls
 back to the fund keys in holdings.json. Price history for the total-return chart is cached in
 `/data/lookthru/prices.sqlite` (`PRICES_DB_FILE`), filled on demand and by a background prefetch
@@ -61,11 +127,11 @@ SearXNG snippets, and a local Ollama model. Output is `/data/lookthru/etf-notes.
 by provider, with source URLs under each paragraph) plus `etf-notes.json`. Neither file is
 committed. Nothing is posted.
 
-Defaults, used from both the container and the host on the LAN:
+Settings (set them in `.env`; the script defaults are localhost):
 
-- `OLLAMA_URL=http://192.168.86.35:11434`
+- `OLLAMA_URL` — your Ollama, e.g. `http://<your-ollama-host>:11434` (compose default `http://host.docker.internal:11434`)
 - `OLLAMA_MODEL=qwen3.5:9b`
-- `SEARCH_URL=http://192.168.86.35:8099` (SearXNG — not port 8080, which is Market Desk)
+- `SEARCH_URL` — your SearXNG, e.g. `http://<your-searxng-host>:8099` (not port 8080, which is Market Desk)
 - `SEARCH_ENGINE=searxng`
 
 Set `FETCH_PAGES=1` to fetch the provider page and include up to 2,000 characters in the prompt.

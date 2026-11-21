@@ -5,6 +5,8 @@
 # Open http://<this-machine>:8097 (host 8096 is avoided: it is Jellyfin's default). Change the published port with HOST_PORT.
 # Holdings you enter stay in your browser (localStorage). Optional pre-scraped ETF holdings live in the
 # portfolio-x-ray-data volume at /data/lookthru/holdings.json (see README).
+# Settings: copy .env.example to .env and edit (optional; .env is gitignored). Compose reads .env both
+# for the ${...} defaults below and, via env_file, for every other variable listed in .env.example.
 
 services:
   portfolio-x-ray:
@@ -14,6 +16,13 @@ services:
     image: portfolio-x-ray:latest
     container_name: portfolio-x-ray
     restart: unless-stopped
+    # Optional: the app starts fine without a .env file (needs Docker Compose 2.24+ for `required`).
+    env_file:
+      - path: .env
+        required: false
+    # Lets the container reach an Ollama running on the Docker host as host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${HOST_PORT:-8097}:8096"
     environment:
@@ -26,9 +35,9 @@ services:
       PRICES_DB_FILE: ${PRICES_DB_FILE:-/data/lookthru/prices.sqlite}
       PRICES_PREFETCH: ${PRICES_PREFETCH:-1}
       PROVIDER_HOLDINGS_PREFETCH: ${PROVIDER_HOLDINGS_PREFETCH:-1}
-      OLLAMA_URL: ${OLLAMA_URL:-http://192.168.86.35:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:9b}
-      SEARCH_URL: ${SEARCH_URL:-http://192.168.86.35:8099}
+      SEARCH_URL: ${SEARCH_URL:-http://host.docker.internal:8099}
       SEARCH_ENGINE: ${SEARCH_ENGINE:-searxng}
     volumes:
       - portfolio-x-ray-data:/data

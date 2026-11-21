@@ -7,19 +7,20 @@ import { PortfolioEditor } from "@/components/lookthru/editor";
 import { Kpis } from "@/components/lookthru/kpis";
 import { LookthroughTable, PositionsTable } from "@/components/lookthru/tables";
 import { HoldingsTree } from "@/components/lookthru/tree";
-import { FundLookup } from "@/components/lookthru/fund-lookup";
+import { EtfBreakdown } from "@/components/lookthru/etf-breakdown";
+import { RebalanceTab } from "@/components/lookthru/rebalance";
 import { Skeleton } from "@/components/lookthru/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/lookthru/ui/tabs";
 import { analyzeHoldings } from "@/lib/lookthru/analyze";
-import { composeLookthrough } from "@/lib/lookthru/lookthrough";
-import { usePortfolio } from "@/lib/lookthru/store";
+import { composeCad } from "@/lib/lookthru/compose-safe";
+import { usePortfolio, type AppTab } from "@/lib/lookthru/store";
 import { applyAlias } from "@/lib/lookthru/tickers";
 
 export function LookthruApp() {
   const hydrated = usePortfolio((s) => s.hydrated);
   const positions = usePortfolio((s) => s.positions);
-  const currency = usePortfolio((s) => s.currency);
-  const setCurrency = usePortfolio((s) => s.setCurrency);
+  const tab = usePortfolio((s) => s.tab);
+  const setTab = usePortfolio((s) => s.setTab);
   const addPosition = usePortfolio((s) => s.addPosition);
   const addMany = usePortfolio((s) => s.addMany);
   const updateShares = usePortfolio((s) => s.updateShares);
@@ -69,85 +70,95 @@ export function LookthruApp() {
 
   const analysis = query.data;
 
-  const result = useMemo(() => {
-    if (!analysis) return null;
-    return composeLookthrough(
-      positions,
-      analysis.instruments,
-      analysis.aliases,
-      analysis.fxUsdCad,
-      currency,
-      analysis.warnings,
-    );
-  }, [analysis, positions, currency]);
+  // Everything is in CAD. A USD holding with no USD→CAD rate gives an error, never a guessed rate.
+  const composed = useMemo(() => (analysis ? composeCad(positions, analysis) : null), [analysis, positions]);
+  const result = composed?.result ?? null;
+  const fxError = composed?.error ?? null;
 
-  // Same states as before the tabs became always-visible: loading while a portfolio
-  // exists but has no result yet, otherwise the empty prompt.
-  const portfolioPlaceholder = tickers.length > 0 ? <LoadingState /> : <EmptyState />;
+  // Loading while a portfolio exists but has no result yet, otherwise the empty prompt.
+  const portfolioPlaceholder = fxError ? (
+    <p className="rounded-xl bg-surface p-6 text-sm text-down border border-down/40">{fxError}</p>
+  ) : tickers.length > 0 ? (
+    <LoadingState />
+  ) : (
+    <EmptyState />
+  );
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <Toaster theme="dark" position="bottom-right" />
-      <Header currency={currency} onCurrency={setCurrency} />
+      <Header />
 
       <p className="max-w-2xl text-xl font-medium tracking-tight">
         See the stocks inside your ETFs.
       </p>
       <p className="max-w-2xl text-sm text-muted">
-        Lookthru unrolls Hamilton, Harvest, Evolve, Purpose, Global X and iShares wrappers —
-        including the Harvest High Income Shares inside HHIS and nested XEQT — into the stocks,
-        gold and crypto you actually own.
+        Lookthru unrolls Hamilton, Harvest, Evolve, Purpose, Global X, Brompton and iShares wrappers —
+        including funds that hold other funds — into the stocks, gold and crypto you actually own.
       </p>
 
-      <PortfolioEditor
-        onAdd={addPosition}
-        onPaste={addMany}
-        onSample={loadSample}
-        onClear={clear}
-        disabled={!hydrated}
-      />
-
-      {result ? (
-        <>
-          <Kpis result={result} />
-          {result.warnings.length ? (
-            <p className="text-xs text-muted">{result.warnings[0]}</p>
-          ) : null}
-          {result.unresolved.length ? (
-            <p className="text-xs text-down">Unresolved: {result.unresolved.join(", ")}</p>
-          ) : null}
-          <CompositionCharts result={result} />
-        </>
-      ) : null}
-
-      {/* Tabs are always reachable so Fund Lookup works without a portfolio; the three
-          portfolio tabs show the same loading / empty / error states as before. */}
-      <Tabs defaultValue="lookthrough">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as AppTab)}>
         <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
-          <TabsTrigger value="lookthrough">Look-through</TabsTrigger>
-          <TabsTrigger value="positions">Positions</TabsTrigger>
-          <TabsTrigger value="tree">Nested tree</TabsTrigger>
-          <TabsTrigger value="fund">Fund Lookup</TabsTrigger>
+          <TabsTrigger value="etf">ETF breakdown</TabsTrigger>
+          <TabsTrigger value="portfolio">Full portfolio</TabsTrigger>
+          <TabsTrigger value="rebalance">Target &amp; rebalance</TabsTrigger>
         </TabsList>
-        <TabsContent value="lookthrough">
-          {result ? <LookthroughTable result={result} /> : portfolioPlaceholder}
+
+        <TabsContent value="etf" forceMount className="data-[state=inactive]:hidden">
+          <EtfBreakdown />
         </TabsContent>
-        <TabsContent value="positions">
+
+        <TabsContent value="portfolio" className="space-y-5">
+          <PortfolioEditor
+            onAdd={addPosition}
+            onPaste={addMany}
+            onSample={loadSample}
+            onClear={clear}
+            disabled={!hydrated}
+          />
+
           {result ? (
-            <PositionsTable result={result} onShares={updateShares} onRemove={removePosition} />
-          ) : (
-            portfolioPlaceholder
-          )}
+            <>
+              <Kpis result={result} />
+              {result.warnings.length ? (
+                <p className="text-xs text-muted">{result.warnings[0]}</p>
+              ) : null}
+              {result.unresolved.length ? (
+                <p className="text-xs text-down">Unresolved: {result.unresolved.join(", ")}</p>
+              ) : null}
+              <CompositionCharts result={result} />
+            </>
+          ) : null}
+
+          <Tabs defaultValue="lookthrough">
+            <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
+              <TabsTrigger value="lookthrough">Look-through</TabsTrigger>
+              <TabsTrigger value="positions">Positions</TabsTrigger>
+              <TabsTrigger value="tree">Nested tree</TabsTrigger>
+            </TabsList>
+            <TabsContent value="lookthrough">
+              {result ? <LookthroughTable result={result} /> : portfolioPlaceholder}
+            </TabsContent>
+            <TabsContent value="positions">
+              {result ? (
+                <PositionsTable result={result} onShares={updateShares} onRemove={removePosition} />
+              ) : (
+                portfolioPlaceholder
+              )}
+            </TabsContent>
+            <TabsContent value="tree">
+              {result ? <HoldingsTree result={result} /> : portfolioPlaceholder}
+            </TabsContent>
+          </Tabs>
         </TabsContent>
-        <TabsContent value="tree">
-          {result ? <HoldingsTree result={result} /> : portfolioPlaceholder}
-        </TabsContent>
-        <TabsContent value="fund" forceMount className="data-[state=inactive]:hidden">
-          <FundLookup />
+
+        <TabsContent value="rebalance">
+          <RebalanceTab result={result} error={fxError} />
         </TabsContent>
       </Tabs>
 
       <footer className="border-t border-line pt-4 text-[11px] text-subtle">
+        All amounts in CAD; USD prices are converted at the USD→CAD rate shown at the top.
         Quotes delayed via Yahoo Finance. ETF weights come from each issuer’s latest
         holdings file when available, then Yahoo, then last disclosed snapshots. Leverage
         (negative cash) can push equity exposure above 100%. Not investment advice.
@@ -176,7 +187,7 @@ function EmptyState() {
       <p className="font-medium text-2xl tracking-tight">Add a holding to unroll it</p>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted">
         Try HDIV.TO for a Canadian covered-call wrapper, XLK for US tech, or HYLD.TO — funds of
-        ETFs that nest all the way down to names like RY, NVDA and AAPL. Or open Fund Lookup to
+        ETFs that nest all the way down to names like RY, NVDA and AAPL. Or open ETF breakdown to
         inspect a single fund without building a portfolio.
       </p>
     </section>

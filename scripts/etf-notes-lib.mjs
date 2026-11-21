@@ -12,9 +12,9 @@ export const DEFAULTS = {
   tickersFile: "/data/lookthru/tickers.json",
   pricesDb: "/data/lookthru/prices.sqlite",
   notesDir: "/data/lookthru",
-  ollamaUrl: "http://192.168.86.35:11434",
+  ollamaUrl: "http://localhost:11434",
   ollamaModel: "qwen3.5:9b",
-  searchUrl: "http://192.168.86.35:8099",
+  searchUrl: "http://localhost:8099",
   searchEngine: "searxng",
   searchDelayMs: 400,
   searchTimeoutMs: 15_000,
@@ -866,7 +866,7 @@ export function interpretPreflight(status, contentType, bodyText) {
         reason: "wrong-app",
         message:
           "The SEARCH_URL response looks like another app (for example Market Desk), not SearXNG. " +
-          "Set SEARCH_URL to the SearXNG instance (default http://192.168.86.35:8099). Continuing without search.",
+          "Set SEARCH_URL to the SearXNG instance (default http://localhost:8099). Continuing without search.",
       };
     }
     return {

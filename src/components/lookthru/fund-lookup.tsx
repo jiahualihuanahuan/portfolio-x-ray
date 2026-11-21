@@ -31,7 +31,7 @@ function useTickerSuggest(query: string, enabled: boolean) {
 
 
 
-function useFund(ticker: string | null) {
+export function useFund(ticker: string | null) {
   return useQuery<FundLookupResult>({
     queryKey: ["fund-lookup", ticker],
     enabled: Boolean(ticker),
@@ -48,16 +48,85 @@ function KindBadge({ kind }: { kind: FundHoldingKind }) {
   return <Badge variant="outline">Stock</Badge>;
 }
 
-/** Fund Lookup tab: one ticker → that fund's own holdings. Needs no portfolio. */
-export function FundLookup() {
-  const [text, setText] = useState("");
+/**
+ * One fund's own holdings (direct, one layer, with drill-down), total-return chart and valuation.
+ * With `ticker` set the parent owns the search box (ETF breakdown tab); otherwise it shows its own.
+ */
+export function FundLookup({ ticker }: { ticker?: string } = {}) {
+  const controlled = ticker !== undefined;
   const [trail, setTrail] = useState<string[]>([]);
+  const current = trail.at(-1) ?? null;
+  const query = useFund(current);
+
+  useEffect(() => {
+    if (controlled) setTrail(ticker ? [ticker] : []);
+  }, [controlled, ticker]);
+
+  function lookup(t: string, push: boolean) {
+    const v = t.trim();
+    if (!v) return;
+    setTrail((prev) => (push ? [...prev, v] : [v]));
+  }
+
+  return (
+    <div className="space-y-4">
+      {controlled ? null : <TickerCombobox onPick={(t) => lookup(t, false)} />}
+
+      {trail.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setTrail((prev) => prev.slice(0, -1))}>
+            <ArrowLeft />
+            Back
+          </Button>
+          <span className="font-mono">{trail.join(" → ")}</span>
+        </div>
+      ) : null}
+
+      {!current ? (
+        controlled ? null : (
+          <section className="rounded-xl bg-surface px-5 py-8 text-center border border-line">
+            <p className="font-medium text-lg tracking-tight">Look inside one fund</p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-muted">
+              Type a ticker such as HDIV, HYLD or BMAX (with or without .TO) to see its holdings,
+              weights, as-of date and source. No portfolio needed.
+            </p>
+          </section>
+        )
+      ) : query.isPending ? (
+        <div className="space-y-2">
+          <Skeleton className="h-20 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
+      ) : query.isError ? (
+        <p className="rounded-xl bg-surface p-6 text-sm text-muted border border-line">
+          The lookup failed. Try again in a moment.
+        </p>
+      ) : query.data ? (
+        <FundResult result={query.data} onOpen={(t) => lookup(t, true)} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Ticker search box with autocomplete from /api/tickers/search. Calls onPick with the chosen ticker. */
+export function TickerCombobox({
+  onPick,
+  initial = "",
+  label = "Fund ticker",
+  button = "Look up",
+  children,
+}: {
+  onPick: (ticker: string, hit?: TickerSearchHit) => void;
+  initial?: string;
+  label?: string;
+  button?: string;
+  children?: ReactNode;
+}) {
+  const [text, setText] = useState(initial);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
   const listId = useId();
-  const current = trail.at(-1) ?? null;
-  const query = useFund(current);
   const suggest = useTickerSuggest(text, open);
   const hits = suggest.data ?? [];
 
@@ -73,29 +142,28 @@ export function FundLookup() {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  function lookup(ticker: string, push: boolean) {
-    const t = ticker.trim();
-    if (!t) return;
-    setText(t);
+  function choose(t: string) {
+    const v = t.trim();
+    if (!v) return;
+    setText(v);
     setOpen(false);
-    setTrail((prev) => (push ? [...prev, t] : [t]));
-  }
-
-  function pick(hit: TickerSearchHit) {
-    lookup(hit.ticker, false);
+    const hit = hits.find((h) => h.ticker.toUpperCase() === v.toUpperCase() || h.displaySymbol.toUpperCase() === v.toUpperCase());
+    onPick(v, hit);
   }
 
   function resolvedSubmit(): string {
     const typed = text.trim();
     if (!typed) return "";
-    const hit = hits[active] ?? hits.find((h) => h.ticker.toUpperCase() === typed.toUpperCase() || h.displaySymbol.toUpperCase() === typed.toUpperCase());
+    const hit =
+      (open ? hits[active] : undefined) ??
+      hits.find((h) => h.ticker.toUpperCase() === typed.toUpperCase() || h.displaySymbol.toUpperCase() === typed.toUpperCase());
     return hit?.ticker ?? typed;
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
     const t = resolvedSubmit();
-    if (t) lookup(t, false);
+    if (t) choose(t);
   }
 
   function onKey(e: KeyboardEvent<HTMLInputElement>) {
@@ -115,111 +183,70 @@ export function FundLookup() {
       setOpen(false);
     } else if (e.key === "Enter" && open && hits[active]) {
       e.preventDefault();
-      pick(hits[active]!);
+      choose(hits[active]!.ticker);
     }
   }
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div ref={boxRef} className="relative min-w-0 flex-1 space-y-1.5">
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium tracking-wide text-muted">Fund ticker</span>
-            <Input
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-                setOpen(true);
-              }}
-              onFocus={() => setOpen(true)}
-              onKeyDown={onKey}
-              placeholder="HDIV, HYLD.TO, BMAX"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              className="font-mono uppercase"
-              role="combobox"
-              aria-label="Fund ticker"
-              aria-autocomplete="list"
-              aria-expanded={open && hits.length > 0}
-              aria-controls={listId}
-              aria-activedescendant={open && hits[active] ? `${listId}-${hits[active]!.ticker}` : undefined}
-            />
-          </label>
-          {open && hits.length > 0 ? (
-            <ul
-              id={listId}
-              role="listbox"
-              className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-line bg-surface py-1 shadow-lg"
-            >
-              {hits.map((hit, i) => (
-                <li key={hit.ticker} role="option" id={`${listId}-${hit.ticker}`} aria-selected={i === active}>
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left",
-                      i === active ? "bg-elevated" : "hover:bg-elevated/60",
-                    )}
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() => pick(hit)}
-                  >
-                    <span className="font-mono text-sm">{hit.ticker}</span>
-                    <span className="text-xs text-muted">
-                      {hit.name}
-                      {hit.provider ? ` · ${hit.provider}` : ""}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-        <Button type="submit" className="h-11 w-full sm:w-auto" disabled={!text.trim()}>
-          <Search />
-          Look up
-        </Button>
-      </form>
-
-      {trail.length > 1 ? (
-        <div className="flex flex-wrap items-center gap-1 text-xs text-muted">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              const prev = trail.slice(0, -1);
-              setTrail(prev);
-              setText(prev.at(-1) ?? "");
+    <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div ref={boxRef} className="relative min-w-0 flex-1 space-y-1.5">
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium tracking-wide text-muted">{label}</span>
+          <Input
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setOpen(true);
             }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKey}
+            placeholder="HDIV, HYLD.TO, BMAX"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            className="font-mono uppercase"
+            role="combobox"
+            aria-label={label}
+            aria-autocomplete="list"
+            aria-expanded={open && hits.length > 0}
+            aria-controls={listId}
+            aria-activedescendant={open && hits[active] ? `${listId}-${hits[active]!.ticker}` : undefined}
+          />
+        </label>
+        {open && hits.length > 0 ? (
+          <ul
+            id={listId}
+            role="listbox"
+            className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-line bg-surface py-1 shadow-lg"
           >
-            <ArrowLeft />
-            Back
-          </Button>
-          <span className="font-mono">{trail.join(" → ")}</span>
-        </div>
-      ) : null}
-
-      {!current ? (
-        <section className="rounded-xl bg-surface px-5 py-8 text-center border border-line">
-          <p className="font-medium text-lg tracking-tight">Look inside one fund</p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-            Type a ticker such as HDIV, HYLD or BMAX (with or without .TO) to see its holdings,
-            weights, as-of date and source. No portfolio needed.
-          </p>
-        </section>
-      ) : query.isPending ? (
-        <div className="space-y-2">
-          <Skeleton className="h-20 rounded-xl" />
-          <Skeleton className="h-64 rounded-xl" />
-        </div>
-      ) : query.isError ? (
-        <p className="rounded-xl bg-surface p-6 text-sm text-muted border border-line">
-          The lookup failed. Try again in a moment.
-        </p>
-      ) : query.data ? (
-        <FundResult result={query.data} onOpen={(t) => lookup(t, true)} />
-      ) : null}
-    </div>
+            {hits.map((hit, i) => (
+              <li key={hit.ticker} role="option" id={`${listId}-${hit.ticker}`} aria-selected={i === active}>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left",
+                    i === active ? "bg-elevated" : "hover:bg-elevated/60",
+                  )}
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => choose(hit.ticker)}
+                >
+                  <span className="font-mono text-sm">{hit.ticker}</span>
+                  <span className="text-xs text-muted">
+                    {hit.name}
+                    {hit.provider ? ` · ${hit.provider}` : ""}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      {children}
+      <Button type="submit" className="h-11 w-full sm:w-auto" disabled={!text.trim()}>
+        <Search />
+        {button}
+      </Button>
+    </form>
   );
 }
 

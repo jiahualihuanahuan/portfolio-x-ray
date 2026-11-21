@@ -89,11 +89,17 @@ function PositionRow({
       </td>
       <td className="px-4 py-3 text-right font-mono tabular-nums">
         <div>
-          {row.price == null ? "—" : formatMoney(row.price, row.currency, true)}
-          {row.currency && row.currency !== currency ? (
-            <span className="ml-1 text-[11px] text-subtle">{row.currency}</span>
-          ) : null}
+          {row.price == null
+            ? "—"
+            : row.shares > 0 && row.value > 0
+              ? formatMoney(row.value / row.shares, currency, true)
+              : formatMoney(row.price, row.currency, true)}
         </div>
+        {row.price != null && row.currency && row.currency.toUpperCase() !== currency ? (
+          <div className="text-[11px] text-subtle">
+            {formatMoney(row.price, row.currency, true)} {row.currency.toUpperCase()}
+          </div>
+        ) : null}
         <div
           className={cn(
             "text-xs",
@@ -124,11 +130,21 @@ function PositionRow({
   );
 }
 
-export function LookthroughTable({ result }: { result: LookthroughResult }) {
+export function LookthroughTable({
+  result,
+  limit = 60,
+  weightLabel = "Of portfolio",
+  foldNote = "smaller names folded into the nested tree.",
+}: {
+  result: LookthroughResult;
+  limit?: number;
+  weightLabel?: string;
+  foldNote?: string;
+}) {
   const stocks = result.leaves.filter((l) => l.kind === "equity" || l.kind === "etf");
   const other = result.leaves.filter((l) => l.kind === "cash" || l.kind === "other");
   const all = [...stocks, ...other];
-  const rows = all.slice(0, 60);
+  const rows = all.slice(0, limit);
   const hidden = all.length - rows.length;
 
   return (
@@ -140,7 +156,7 @@ export function LookthroughTable({ result }: { result: LookthroughResult }) {
             <th className="px-4 py-3 font-medium">Sector</th>
             <th className="px-4 py-3 font-medium">Country</th>
             <th className="px-4 py-3 text-right font-medium">Value</th>
-            <th className="px-4 py-3 font-medium">Of portfolio</th>
+            <th className="px-4 py-3 font-medium">{weightLabel}</th>
             <th className="px-4 py-3 font-medium">Via</th>
           </tr>
         </thead>
@@ -183,7 +199,7 @@ export function LookthroughTable({ result }: { result: LookthroughResult }) {
       </table>
       {hidden > 0 ? (
         <p className="border-t border-line px-4 py-3 text-xs text-muted">
-          {hidden} smaller names folded into the nested tree.
+          {hidden} {foldNote}
         </p>
       ) : null}
     </div>

@@ -10,6 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiAskRouteImport } from './routes/api/ask'
+import { Route as ApiConfigRouteImport } from './routes/api/config'
+import { Route as ApiFxRouteImport } from './routes/api/fx'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiFundTickerRouteImport } from './routes/api/fund/$ticker'
 import { Route as ApiTickersSearchRouteImport } from './routes/api/tickers/search'
@@ -19,6 +22,21 @@ import { Route as ApiFundTickerHistoryRouteImport } from './routes/api/fund/$tic
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAskRoute = ApiAskRouteImport.update({
+  id: '/api/ask',
+  path: '/api/ask',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiConfigRoute = ApiConfigRouteImport.update({
+  id: '/api/config',
+  path: '/api/config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFxRoute = ApiFxRouteImport.update({
+  id: '/api/fx',
+  path: '/api/fx',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -49,6 +67,9 @@ const ApiFundTickerHistoryRoute = ApiFundTickerHistoryRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/ask': typeof ApiAskRoute
+  '/api/config': typeof ApiConfigRoute
+  '/api/fx': typeof ApiFxRoute
   '/api/health': typeof ApiHealthRoute
   '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
   '/api/tickers/search': typeof ApiTickersSearchRoute
@@ -57,6 +78,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/ask': typeof ApiAskRoute
+  '/api/config': typeof ApiConfigRoute
+  '/api/fx': typeof ApiFxRoute
   '/api/health': typeof ApiHealthRoute
   '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
   '/api/tickers/search': typeof ApiTickersSearchRoute
@@ -66,6 +90,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/ask': typeof ApiAskRoute
+  '/api/config': typeof ApiConfigRoute
+  '/api/fx': typeof ApiFxRoute
   '/api/health': typeof ApiHealthRoute
   '/api/fund/$ticker': typeof ApiFundTickerRouteWithChildren
   '/api/tickers/search': typeof ApiTickersSearchRoute
@@ -76,6 +103,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api/ask'
+    | '/api/config'
+    | '/api/fx'
     | '/api/health'
     | '/api/fund/$ticker'
     | '/api/tickers/search'
@@ -84,6 +114,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api/ask'
+    | '/api/config'
+    | '/api/fx'
     | '/api/health'
     | '/api/fund/$ticker'
     | '/api/tickers/search'
@@ -92,6 +125,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api/ask'
+    | '/api/config'
+    | '/api/fx'
     | '/api/health'
     | '/api/fund/$ticker'
     | '/api/tickers/search'
@@ -101,6 +137,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiAskRoute: typeof ApiAskRoute
+  ApiConfigRoute: typeof ApiConfigRoute
+  ApiFxRoute: typeof ApiFxRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiFundTickerRoute: typeof ApiFundTickerRouteWithChildren
   ApiTickersSearchRoute: typeof ApiTickersSearchRoute
@@ -114,6 +153,27 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ask': {
+      id: '/api/ask'
+      path: '/api/ask'
+      fullPath: '/api/ask'
+      preLoaderRoute: typeof ApiAskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/config': {
+      id: '/api/config'
+      path: '/api/config'
+      fullPath: '/api/config'
+      preLoaderRoute: typeof ApiConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fx': {
+      id: '/api/fx'
+      path: '/api/fx'
+      fullPath: '/api/fx'
+      preLoaderRoute: typeof ApiFxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/health': {
@@ -168,6 +228,9 @@ const ApiFundTickerRouteWithChildren = ApiFundTickerRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAskRoute: ApiAskRoute,
+  ApiConfigRoute: ApiConfigRoute,
+  ApiFxRoute: ApiFxRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiFundTickerRoute: ApiFundTickerRouteWithChildren,
   ApiTickersSearchRoute: ApiTickersSearchRoute,

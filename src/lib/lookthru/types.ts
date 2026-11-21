@@ -84,5 +84,5 @@ export type LookthroughResult = {
   trees: TreeNode[];
   unresolved: string[];
   warnings: string[];
-  fxUsdCad: number;
+  fxUsdCad: number | null;
 };

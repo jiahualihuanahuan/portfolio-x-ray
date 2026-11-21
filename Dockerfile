@@ -27,11 +27,8 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--experimental-sqlite \
     LOOKTHRU_HOLDINGS_FILE=/data/lookthru/holdings.json \
     LOOKTHRU_TICKERS_FILE=/data/lookthru/tickers.json \
-    PRICES_DB_FILE=/data/lookthru/prices.sqlite \
-    OLLAMA_URL=http://192.168.86.35:11434 \
-    OLLAMA_MODEL=qwen3.5:9b \
-    SEARCH_URL=http://192.168.86.35:8099 \
-    SEARCH_ENGINE=searxng
+    PRICES_DB_FILE=/data/lookthru/prices.sqlite
+# OLLAMA_URL, OLLAMA_MODEL, SEARCH_URL etc. come from docker-compose / .env (see .env.example).
 # poppler-utils: pdftotext reads leverage (loans payable) from Brompton Portfolio Summary PDFs.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates poppler-utils \

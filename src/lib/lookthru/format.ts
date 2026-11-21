@@ -1,3 +1,4 @@
+import { FxUnavailableError, normalizeUsdCad, toCad } from "./fx.ts";
 import type { CurrencyCode } from "./types.ts";
 
 function money(currency: string, exact: boolean): Intl.NumberFormat {
@@ -10,9 +11,20 @@ function money(currency: string, exact: boolean): Intl.NumberFormat {
   });
 }
 
+/** CAD shows as C$1,234 (−C$1,234 when negative), USD as US$1,234; others keep Intl formatting. */
 export function formatMoney(value: number, currency: string, exact = false): string {
   const abs = Math.abs(value);
   const useExact = exact || abs < 1000;
+  if ((currency || "CAD").toUpperCase() === "CAD") {
+    const digits = useExact ? 2 : 0;
+    const body = abs.toLocaleString("en-CA", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return `${value < 0 && Number(body.replace(/,/g, "")) !== 0 ? "−" : ""}C$${body}`;
+  }
+  if ((currency || "").toUpperCase() === "USD") {
+    const digits = useExact ? 2 : 0;
+    const body = abs.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return `${value < 0 && Number(body.replace(/,/g, "")) !== 0 ? "−" : ""}US$${body}`;
+  }
   try {
     return money(currency, useExact).format(value);
   } catch {
@@ -37,15 +49,21 @@ export function formatShares(n: number): string {
   return n.toLocaleString("en-CA", { maximumFractionDigits: 2 });
 }
 
+/**
+ * Convert between CAD and USD. Needs a real USDCAD rate: there is no hard-coded fallback, so a
+ * missing rate throws (see fx.ts). The app itself always reports in CAD.
+ */
 export function convert(
   amount: number,
   from: string,
   to: CurrencyCode,
-  usdCad: number,
+  usdCad: number | null,
 ): number {
   const src = from.toUpperCase();
   if (src === to) return amount;
-  const rate = usdCad > 0 && usdCad < 1 ? 1 / usdCad : usdCad || 1.39;
-  const inUsd = src === "USD" ? amount : src === "CAD" ? amount / rate : amount;
-  return to === "USD" ? inUsd : inUsd * rate;
+  const cad = toCad(amount, src, usdCad);
+  if (to === "CAD") return cad;
+  const rate = normalizeUsdCad(usdCad);
+  if (rate == null) throw new FxUnavailableError();
+  return cad / rate;
 }

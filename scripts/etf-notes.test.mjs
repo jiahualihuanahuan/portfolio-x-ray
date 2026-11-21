@@ -205,11 +205,11 @@ test("parseArgs accepts force, limit, only, provider, and print-prompt", () => {
   assert.throws(() => parseArgs(["--surprise"]), /Unexpected argument/);
 });
 
-test("envConfig uses the homelab LAN defaults", () => {
+test("envConfig uses localhost defaults (set OLLAMA_URL / SEARCH_URL for a LAN host)", () => {
   const cfg = envConfig({});
-  assert.equal(cfg.ollamaUrl, "http://192.168.86.35:11434");
+  assert.equal(cfg.ollamaUrl, "http://localhost:11434");
   assert.equal(cfg.ollamaModel, "qwen3.5:9b");
-  assert.equal(cfg.searchUrl, "http://192.168.86.35:8099");
+  assert.equal(cfg.searchUrl, "http://localhost:8099");
   assert.equal(cfg.searchEngine, "searxng");
   assert.equal(cfg.holdingsFile, "/data/lookthru/holdings.json");
   assert.equal(cfg.pricesDb, "/data/lookthru/prices.sqlite");

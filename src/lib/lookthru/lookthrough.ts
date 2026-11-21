@@ -37,7 +37,8 @@ export function composeLookthrough(
   positions: Position[],
   instruments: Record<string, Instrument>,
   aliases: Record<string, string>,
-  usdCad: number,
+  /** CAD per USD. null = unavailable; converting a USD price then throws FxUnavailableError. */
+  usdCad: number | null,
   currency: CurrencyCode,
   warnings: string[] = [],
 ): LookthroughResult {

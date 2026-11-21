@@ -2,7 +2,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SAMPLE_POSITIONS } from "./catalog";
 import { normalizeTicker } from "./tickers";
+import { type RebalanceMode, type Target, type TargetKind } from "./rebalance";
 import type { CurrencyCode, Position } from "./types";
+
+export type AppTab = "etf" | "portfolio" | "rebalance";
 
 type PortfolioState = {
   hydrated: boolean;
@@ -16,6 +19,22 @@ type PortfolioState = {
   removePosition: (id: string) => void;
   loadSample: () => void;
   clear: () => void;
+  // Shared across tabs and persisted with the portfolio.
+  tab: AppTab;
+  setTab: (t: AppTab) => void;
+  etfTicker: string;
+  etfAmount: number;
+  setEtf: (ticker: string, amount: number) => void;
+  targets: Target[];
+  /** null = use the server default (REBALANCE_THRESHOLD_PCT, 10% if unset). */
+  threshold: number | null;
+  mode: RebalanceMode;
+  addTarget: (kind: TargetKind, key: string, amount: number) => void;
+  updateTarget: (id: string, amount: number) => void;
+  removeTarget: (id: string) => void;
+  clearTargets: () => void;
+  setThreshold: (t: number | null) => void;
+  setMode: (m: RebalanceMode) => void;
 };
 
 function nid(): string {
@@ -37,7 +56,8 @@ export const usePortfolio = create<PortfolioState>()(
       positions: toPositions(SAMPLE_POSITIONS),
       currency: "CAD",
       setHydrated: () => set({ hydrated: true }),
-      setCurrency: (currency) => set({ currency }),
+      // CAD-only since the CAD switch; kept so older callers compile.
+      setCurrency: () => set({ currency: "CAD" }),
       addPosition: (ticker, shares) => {
         const t = normalizeTicker(ticker);
         if (!t || !Number.isFinite(shares) || shares === 0) return;
@@ -65,11 +85,61 @@ export const usePortfolio = create<PortfolioState>()(
         set({ positions: get().positions.filter((p) => p.id !== id) }),
       loadSample: () => set({ positions: toPositions(SAMPLE_POSITIONS) }),
       clear: () => set({ positions: [] }),
+      tab: "portfolio",
+      setTab: (tab) => set({ tab }),
+      etfTicker: "",
+      etfAmount: 10_000,
+      setEtf: (etfTicker, etfAmount) =>
+        set({
+          etfTicker: normalizeTicker(etfTicker),
+          etfAmount: Number.isFinite(etfAmount) && etfAmount > 0 ? etfAmount : 10_000,
+        }),
+      targets: [],
+      threshold: null,
+      mode: "rebalance",
+      addTarget: (kind, key, amount) => {
+        const k = kind === "ticker" ? normalizeTicker(key) : key.trim();
+        if (!k || !Number.isFinite(amount) || amount < 0) return;
+        const same = (t: Target) =>
+          t.kind === kind && t.key.toLowerCase() === k.toLowerCase();
+        const existing = get().targets.find(same);
+        if (existing) {
+          set({
+            targets: get().targets.map((t) =>
+              t.id === existing.id ? { ...t, amount } : t,
+            ),
+          });
+          return;
+        }
+        set({ targets: [...get().targets, { id: nid(), kind, key: k, amount }] });
+      },
+      updateTarget: (id, amount) => {
+        if (!Number.isFinite(amount) || amount < 0) return;
+        set({ targets: get().targets.map((t) => (t.id === id ? { ...t, amount } : t)) });
+      },
+      removeTarget: (id) => set({ targets: get().targets.filter((t) => t.id !== id) }),
+      clearTargets: () => set({ targets: [] }),
+      setThreshold: (threshold) => {
+        if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0)) return;
+        set({ threshold });
+      },
+      setMode: (mode) => set({ mode }),
     }),
     {
       name: "lookthru-book-v4",
-      partialize: (s) => ({ positions: s.positions, currency: s.currency }),
+      partialize: (s) => ({
+        positions: s.positions,
+        currency: s.currency,
+        tab: s.tab,
+        etfTicker: s.etfTicker,
+        etfAmount: s.etfAmount,
+        targets: s.targets,
+        threshold: s.threshold,
+        mode: s.mode,
+      }),
       onRehydrateStorage: () => (state) => {
+        // The app reports in CAD only; older saved books may still say USD.
+        state?.setCurrency("CAD");
         state?.setHydrated();
       },
     },

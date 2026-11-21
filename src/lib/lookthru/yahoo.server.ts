@@ -3,6 +3,9 @@ import { COMPLETE_COVERAGE, disclosedCoverage, holdingsAreUsable, nameLooksLikeF
 import { bromptonFund } from "./brompton";
 import { fetchIssuerHoldings, isIssuerFundTicker } from "./issuers.server";
 import { applyAlias, candidateSymbols, displaySymbol, issuerKey, normalizeTicker, stripShareClass } from "./tickers";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { parseCachedFx, parseOverride, resolveFx, type FxRate } from "./fx";
 import type { AssetKind, DataSource, HoldingLine, Instrument } from "./types";
 
 const UA =
@@ -388,10 +391,65 @@ function mergeInstrument(
   };
 }
 
+/** Disk copy of the last good USDCAD rate (never in git; lives in the data volume). */
+export function fxCacheFile(): string {
+  return process.env["FX_CACHE_FILE"] || "/data/lookthru/fx-usdcad.json";
+}
+
+function readFxCache(): FxRate | null {
+  try {
+    return parseCachedFx(readFileSync(fxCacheFile(), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeFxCache(fx: FxRate): void {
+  try {
+    mkdirSync(dirname(fxCacheFile()), { recursive: true });
+    writeFileSync(fxCacheFile(), JSON.stringify({ rate: fx.rate, asOf: fx.asOf, pair: fx.pair }, null, 2));
+  } catch {
+    // Read-only filesystem: the in-memory quote cache still applies.
+  }
+}
+
+let lastLiveFx: FxRate | null = null;
+
+/**
+ * FX_USDCAD_OVERRIDE if set; else live Yahoo FX_PAIR (default USDCAD=X, then CAD=X); else the disk
+ * cache; else an explicit error. No constant fallback.
+ */
+export async function usdCadRate(): Promise<{ fx: FxRate | null; error: string | null }> {
+  const override = parseOverride(process.env["FX_USDCAD_OVERRIDE"]);
+  if (override != null) return resolveFx(null, null, new Date(), override);
+  const primary = (process.env["FX_PAIR"] || "USDCAD=X").trim();
+  let live: { rate: number | null; pair: string } | null = null;
+  for (const pair of [...new Set([primary, "USDCAD=X", "CAD=X"])]) {
+    const q = await fetchQuote(pair);
+    if (q?.price && q.price > 0) {
+      live = { rate: q.price, pair };
+      break;
+    }
+  }
+  // Within the 5-minute quote cache keep the original fetch time instead of "now".
+  if (live && lastLiveFx && lastLiveFx.pair === live.pair && lastLiveFx.rate === (live.rate! < 1 ? 1 / live.rate! : live.rate)) {
+    return { fx: lastLiveFx, error: null };
+  }
+  const res = resolveFx(live, live ? null : readFxCache());
+  if (res.fx?.source === "live") {
+    lastLiveFx = res.fx;
+    writeFxCache(res.fx);
+  }
+  return res;
+}
+
 export async function analyzeTickers(tickers: string[], live = false): Promise<{
   instruments: Record<string, Instrument>;
   aliases: Record<string, string>;
-  fxUsdCad: number;
+  /** CAD per USD, or null when no live or cached rate exists (see fxError). */
+  fxUsdCad: number | null;
+  fx: FxRate | null;
+  fxError: string | null;
   warnings: string[];
 }> {
   const warnings: string[] = [];
@@ -400,10 +458,8 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
   const previous = forceQuotes;
   forceQuotes = live;
   try {
-  const usdCadQuote =
-    (await fetchQuote("USDCAD=X")) ?? (await fetchQuote("CAD=X"));
-  let fxUsdCad = usdCadQuote?.price && usdCadQuote.price > 0 ? usdCadQuote.price : 1.39;
-  if (fxUsdCad < 1) fxUsdCad = 1 / fxUsdCad;
+  const fxRes = await usdCadRate();
+  const fxUsdCad = fxRes.fx?.rate ?? null;
 
   const queue: { symbol: string; depth: number }[] = [];
   const seen = new Set<string>();
@@ -513,7 +569,14 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
     });
   }
 
-  return { instruments, aliases, fxUsdCad, warnings: [...new Set(warnings)] };
+  return {
+    instruments,
+    aliases,
+    fxUsdCad,
+    fx: fxRes.fx,
+    fxError: fxRes.error,
+    warnings: [...new Set(warnings)],
+  };
   } finally {
     forceQuotes = previous;
   }
