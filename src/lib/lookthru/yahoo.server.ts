@@ -1,5 +1,6 @@
-import { BOOK_MARKS, catalogInstrument, isSynthetic, sectorOf, syntheticInstrument } from "./catalog";
-import { holdingsAreUsable, nameLooksLikeFund } from "./holdings-parse";
+import { BOOK_MARKS, catalogInstrument, isPseudoSymbol, isSynthetic, sectorOf, syntheticInstrument } from "./catalog";
+import { COMPLETE_COVERAGE, disclosedCoverage, holdingsAreUsable, nameLooksLikeFund } from "./holdings-parse";
+import { bromptonFund } from "./brompton";
 import { fetchIssuerHoldings, isIssuerFundTicker } from "./issuers.server";
 import { applyAlias, candidateSymbols, displaySymbol, issuerKey, normalizeTicker, stripShareClass } from "./tickers";
 import type { AssetKind, DataSource, HoldingLine, Instrument } from "./types";
@@ -355,9 +356,12 @@ function mergeInstrument(
   const issuerHoldings = issuer && holdingsAreUsable(issuer.holdings) ? issuer.holdings : null;
   const yahoo = yahooHoldings && holdingsAreUsable(yahooHoldings) ? yahooHoldings : null;
   const catHoldings = catalog?.holdings && catalog.holdings.length ? catalog.holdings : null;
-  const holdings = issuerHoldings ?? yahoo ?? catHoldings ?? null;
+  // Issuer lists win; between Yahoo's top 10 and a catalog snapshot, keep whichever names more.
+  const fallback =
+    yahoo && (!catHoldings || disclosedCoverage(yahoo) > disclosedCoverage(catHoldings)) ? yahoo : catHoldings ?? yahoo;
+  const holdings = issuerHoldings ?? fallback ?? null;
   const kind: AssetKind = catalog?.kind ?? (holdings && holdings.length ? "etf" : quote.kind);
-  const coverage = holdings?.reduce((s, h) => s + Math.max(h.weight, 0), 0) ?? catalog?.coverage ?? 0;
+  const coverage = holdings ? disclosedCoverage(holdings) : (catalog?.coverage ?? 0);
   const source: DataSource =
     holdings && issuerHoldings && holdings === issuerHoldings
       ? "issuer"
@@ -470,9 +474,13 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
 
       let yahooHoldings: HoldingLine[] | null = null;
       let issuer: Awaited<ReturnType<typeof fetchIssuerHoldings>> = null;
-      const catalogHoldingsOk = holdingsAreUsable(catalog?.holdings);
+      // A catalog entry that is mostly OTHER (top holdings only) still asks the issuer for a full list.
+      const catalogHoldingsOk =
+        holdingsAreUsable(catalog?.holdings) && disclosedCoverage(catalog?.holdings) >= COMPLETE_COVERAGE;
       const isFund = looksLikeFundInstrument(quote, catalog) && depth <= 4;
-      if (isFund && !catalogHoldingsOk) {
+      // Cache-backed issuers (Brompton) are cheap, so their current list beats a catalog snapshot.
+      const cachedIssuer = Boolean(bromptonFund(quote.symbol));
+      if (isFund && (!catalogHoldingsOk || cachedIssuer)) {
         issuer = await fetchIssuerHoldings(quote.symbol, quote.currency);
       }
       if (isFund && !catalogHoldingsOk && depth <= 3 && !holdingsAreUsable(issuer?.holdings)) {
@@ -493,12 +501,12 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
 
       if (inst.holdings && depth < 4) {
         for (const h of inst.holdings) {
-          if (isSynthetic(h.symbol)) continue;
+          if (isSynthetic(h.symbol) || isPseudoSymbol(h.symbol)) continue;
           const childListing = applyAlias(h.symbol);
           if (seen.has(childListing) || seen.has(h.symbol)) continue;
           if (!holdingLooksLikeFund(h)) continue;
           const childCat = catalogInstrument(h.symbol);
-          if (holdingsAreUsable(childCat?.holdings)) continue;
+          if (holdingsAreUsable(childCat?.holdings) && disclosedCoverage(childCat?.holdings) >= COMPLETE_COVERAGE) continue;
           queue.push({ symbol: h.symbol, depth: depth + 1 });
         }
       }

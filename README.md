@@ -38,6 +38,22 @@ at startup and around 6 PM America/Toronto. Disable the job with `PRICES_PREFETC
 with `npm run prefetch`.
 
 
+## Brompton funds (BMAX and its children)
+
+Brompton publishes each ETF's quarterly top 25 holdings by name on bromptongroup.com. The app fetches
+BMAX, BFIN, TLF, BGIE, BDIV, BLOV, EDGF, HIG, SPLT, BPRF and BAAA from there in the background at
+startup and re-checks daily (entries are kept 7 days). It honours the site's 10 s crawl delay, so a full
+pass takes about two minutes. Results are cached in `/data/lookthru/provider-holdings/` (override with
+`LOOKTHRU_PROVIDER_DIR`), never in git. Company names are matched to tickers from the catalog, the
+holdings file, then a cached Yahoo search (`name-tickers.json` in the same folder).
+
+BMAX's page lists weights as % of portfolio. The app reads its borrowing from the linked Portfolio Summary PDF
+(`pdftotext`, included in the Docker image) and books it as negative cash, so the weights become % of NAV
+and still add up to 100%. Preferred shares and CLO tranches show as named fixed-income lines (`FI`).
+Any part of a fund the issuer doesn't name shows as OTHER, and the look-through prints a partial-coverage
+warning with the percentage. Turn the background fetch off with `PROVIDER_HOLDINGS_PREFETCH=0`. To force
+a refresh, delete the cache folder and restart the container.
+
 ## ETF notes (homelab)
 
 Draft one paragraph per fund from the local holdings file, the SQLite price cache, optional

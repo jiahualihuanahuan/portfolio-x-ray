@@ -1857,15 +1857,20 @@ const FUNDS: Instrument[] = [
     ["CASH", "Cash & other", 1.0, "Cash"],
   ]),
 
-  fund("BMAX.TO", "Brompton Enhanced Multi-Asset Income ETF", "CAD", "2026-07-31", [
-    ["MSFT", "Microsoft Corp", 3.2, "Information Technology"],
-    ["AAPL", "Apple Inc", 2.6, "Information Technology"],
-    ["NVDA", "NVIDIA Corp", 2.4, "Information Technology"],
-    ["JPM", "JPMorgan Chase & Co", 2.2, "Financials"],
-    ["RY.TO", "Royal Bank of Canada", 2.1, "Financials"],
-    ["UNH", "UnitedHealth Group Inc", 1.8, "Health Care"],
-    ["OTHER", "Other Brompton sleeve holdings", 85.2, "Other"],
-    ["CASH", "Cash & other", 0.5, "Cash"],
+  // bromptongroup.com fund page, Summary of Investment Portfolio as at 2026-10-31 (% of portfolio).
+  // BMAX holds only other funds; the look-through recurses into each one. The live Brompton
+  // cache (brompton.server.ts) replaces this with the current page plus leverage when available.
+  fund("BMAX.TO", "Brompton Enhanced Multi-Asset Income ETF", "CAD", "2026-10-31", [
+    ["BFIN.TO", "Brompton North American Financials Dividend ETF", 12.6, "Fund"],
+    ["TLF.TO", "Brompton Tech Leaders Income ETF", 12.6, "Fund"],
+    ["BGIE.TO", "Brompton Global Infrastructure ETF", 11.9, "Fund"],
+    ["BDIV.TO", "Brompton Global Dividend Growth ETF", 11.1, "Fund"],
+    ["BLOV.TO", "Brompton North American Low Volatility Dividend ETF", 10.6, "Fund"],
+    ["EDGF.TO", "Brompton European Dividend Growth ETF", 10.1, "Fund"],
+    ["HIG.TO", "Brompton Global Healthcare Income & Growth ETF", 10.0, "Fund"],
+    ["SPLT.TO", "Brompton Split Corp. Preferred Share ETF", 9.4, "Fund"],
+    ["BPRF.TO", "Brompton Flaherty & Crumrine Investment Grade Preferred ETF", 6.8, "Fund"],
+    ["FI:BROMPTON-WELLINGTON-SQUARE-INVESTMENT-GRADE-CLO-ETF", "Brompton Wellington Square Investment Grade CLO ETF", 4.9, "Fixed Income"],
   ]),
 
   fund("CMAX.TO", "Hamilton Canadian Equity YIELD MAXIMIZER ETF", "CAD", "2026-08-31", [
@@ -2037,6 +2042,11 @@ export function catalogInstrument(ticker: string): Instrument | undefined {
     return BY_ISSUER.get(base) ?? BY_SYMBOL.get(`${base}.TO`) ?? BY_SYMBOL.get(`${base}.NE`);
   }
   return undefined;
+}
+
+/** Named lines with no listing: `FI:` preferred shares / CLO tranches / bonds, `NAME:` unresolved companies. */
+export function isPseudoSymbol(symbol: string): boolean {
+  return /^(FI|NAME):/i.test(symbol);
 }
 
 export function isSynthetic(symbol: string): boolean {

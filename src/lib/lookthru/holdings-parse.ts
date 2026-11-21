@@ -94,6 +94,15 @@ export function nameLooksLikeFund(name: string): boolean {
   );
 }
 
+/** Share of the fund named line by line: positive weights, excluding OTHER / undisclosed rows. */
+export function disclosedCoverage(holdings: HoldingLine[] | null | undefined): number {
+  if (!holdings) return 0;
+  return holdings.reduce((s, h) => (h.symbol && h.symbol.toUpperCase() !== "OTHER" ? s + Math.max(h.weight, 0) : s), 0);
+}
+
+/** Below this, a holdings list is treated as partial (e.g. Yahoo's top 10) and a fuller source is tried. */
+export const COMPLETE_COVERAGE = 0.9;
+
 export function holdingsAreUsable(holdings: HoldingLine[] | null | undefined): boolean {
   if (!holdings || holdings.length === 0) return false;
   const named = holdings.filter((h) => h.symbol && h.symbol !== "OTHER");

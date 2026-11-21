@@ -1,4 +1,4 @@
-import { nameLooksLikeFund } from "./holdings-parse.ts";
+import { COMPLETE_COVERAGE, disclosedCoverage, nameLooksLikeFund } from "./holdings-parse.ts";
 import { candidateSymbols, displaySymbol, issuerKey, normalizeTicker } from "./tickers.ts";
 import type { HoldingLine } from "./types.ts";
 
@@ -148,15 +148,26 @@ export async function lookupFund(raw: string, deps: FundLookupDeps): Promise<Fun
     const hit = deps.fromFile(c);
     if (hit) return found(query, hit, deps);
   }
+  let partialCatalog: FundSource | null = null;
   for (const c of candidates) {
     const hit = deps.fromCatalog(c);
-    if (hit) return found(query, hit, deps);
+    if (!hit) continue;
+    // A catalog snapshot that names only the top holdings (the rest is OTHER) is a fallback:
+    // try the issuer first so a full list wins.
+    if (deps.fromIssuer && disclosedCoverage(hit.holdings) < COMPLETE_COVERAGE) {
+      partialCatalog ??= hit;
+      continue;
+    }
+    return found(query, hit, deps);
   }
   if (deps.fromIssuer) {
     // Live issuer pages: only the preferred listing, to keep one lookup to a few requests.
     const hit = await deps.fromIssuer(candidates[0]!);
-    if (hit) return found(query, hit, deps);
+    if (hit && (!partialCatalog || disclosedCoverage(hit.holdings) >= disclosedCoverage(partialCatalog.holdings))) {
+      return found(query, hit, deps);
+    }
   }
+  if (partialCatalog) return found(query, partialCatalog, deps);
 
   for (const c of candidates) {
     const name = deps.knownName(c);

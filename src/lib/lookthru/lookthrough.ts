@@ -45,6 +45,7 @@ export function composeLookthrough(
   const unresolved: string[] = [];
   const leafMap = new Map<string, LeafExposure>();
   const trees: TreeNode[] = [];
+  const partialWarned = new Set<string>();
 
   for (const pos of positions) {
     const resolved = aliases[applyAlias(pos.ticker)] ?? applyAlias(pos.ticker);
@@ -134,7 +135,13 @@ export function composeLookthrough(
   ): TreeNode {
     const inst = instrumentOf(symbol, instruments);
     const name = inst?.name ?? nameHint;
-    const kind = inst?.kind ?? (isSynthetic(symbol) ? syntheticInstrument(symbol).kind : "equity");
+    const kind =
+      inst?.kind ??
+      (isSynthetic(symbol)
+        ? syntheticInstrument(symbol).kind
+        : /^FI:/i.test(symbol)
+          ? "other"
+          : "equity");
     const display = inst?.displaySymbol ?? displaySymbol(symbol);
     const node: TreeNode = {
       symbol: inst?.symbol ?? symbol,
@@ -186,10 +193,20 @@ export function composeLookthrough(
       node.children.push(child);
     }
     const remainder = 1 - accounted;
+    const explicitOther = holdings
+      .filter((h) => issuerKey(h.symbol) === "OTHER")
+      .reduce((s, h) => s + h.weight, 0);
+    const undisclosed = explicitOther + Math.max(remainder, 0);
+    if (undisclosed > 0.05 && !partialWarned.has(key)) {
+      partialWarned.add(key);
+      warnings.push(
+        `${display}: the issuer names ${Math.round((1 - undisclosed) * 1000) / 10}% of holdings; the other ${Math.round(undisclosed * 1000) / 10}% shows as OTHER (partial coverage).`,
+      );
+    }
     if (Math.abs(remainder) > 0.005) {
       const child = expand(
         "OTHER",
-        "Other / undisclosed",
+        "Undisclosed holdings (partial coverage)",
         value * remainder,
         weightOfNav * remainder,
         MAX_DEPTH,

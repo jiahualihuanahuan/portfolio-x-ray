@@ -209,6 +209,8 @@ export function displaySymbol(symbol: string): string {
   if (n === "CASH") return "CASH";
   if (n === "OPTIONS") return "OPT";
   if (n === "OTHER") return "OTHER";
+  if (n.startsWith("FI:")) return "FI";
+  if (n.startsWith("NAME:")) return "—";
   if (n === "BTC-USD" || n === "BTC") return "BTC";
   if (n === "ETH-USD" || n === "ETH") return "ETH";
   if (n === "XAUUSD=X" || n === "XAU") return "XAU";

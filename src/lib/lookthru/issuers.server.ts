@@ -1,4 +1,6 @@
 import { tickerFromCompanyName } from "./catalog";
+import { bromptonFund } from "./brompton";
+import { bromptonHoldingsCached } from "./brompton.server";
 import { fileHoldings, hasFileHoldings } from "./holdings-file";
 import { fetchIndexHoldings, isIndexProxyTicker } from "./index-holdings";
 import {
@@ -142,7 +144,7 @@ const EVOLVE = new Set([
 
 const PURPOSE = new Set(["PDF", "PYF", "PAYF", "PDIV", "PID", "REM", "PSA", "BTCC", "KILO"]);
 
-export type IssuerName = "harvest" | "hamilton" | "evolve" | "purpose" | "file" | "index";
+export type IssuerName = "harvest" | "hamilton" | "evolve" | "purpose" | "brompton" | "file" | "index";
 
 export type IssuerHoldings = {
   holdings: HoldingLine[];
@@ -162,6 +164,7 @@ export function issuerFamily(symbol: string): IssuerName | null {
   if (HAMILTON.has(base)) return "hamilton";
   if (EVOLVE.has(base)) return "evolve";
   if (PURPOSE.has(base)) return "purpose";
+  if (bromptonFund(base)) return "brompton";
   return null;
 }
 
@@ -372,6 +375,15 @@ export async function fetchIssuerHoldings(
     }
   }
 
+  // Brompton: disk cache under /data/lookthru/provider-holdings, refreshed in the background
+  // (crawl-delay 10 s makes a live fetch too slow for a request).
+  if (bromptonFund(symbol)) {
+    const hit = bromptonHoldingsCached(symbol);
+    if (hit && holdingsAreUsable(hit.holdings)) {
+      return { holdings: hit.holdings, asOf: hit.asOf, issuer: "brompton" };
+    }
+  }
+
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
 
@@ -385,6 +397,8 @@ export async function fetchIssuerHoldings(
       const index = await ensurePurposeIndex();
       const url = index.get(key) ?? index.get(issuerKey(symbol));
       if (url) value = await fetchPurpose(url);
+    } else if (family === "brompton") {
+      value = null; // still warming in the background; catalog/Yahoo fill in meanwhile
     } else if (isCanadianListed(symbol, currency)) {
       value = await probeCanadian(symbol);
     }

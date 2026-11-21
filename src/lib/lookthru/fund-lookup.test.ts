@@ -85,7 +85,7 @@ describe("fund lookup", () => {
     assert.equal(r.holdings[0]!.symbol, "HFIN.TO");
   });
 
-  it("prefers the file, then the catalog, then live issuer pages", async () => {
+  it("prefers the file, then the catalog, then live issuer pages (partial catalog asks the issuer first)", async () => {
     const calls: string[] = [];
     const d = deps({
       fromCatalog: (s) => (s === "BMAX.TO" ? { symbol: s, holdings: HMAX, source: "Bundled catalog snapshot", name: "Brompton BMAX" } : null),
@@ -99,7 +99,8 @@ describe("fund lookup", () => {
     assert.equal(b.status === "ok" && b.name, "Brompton BMAX");
     const h = await lookupFund("hyld", d);
     assert.equal(h.status === "ok" && h.source, "Hamilton ETFs (live)");
-    assert.deepEqual(calls, ["HYLD.TO"]);
+    // HMAX's snapshot is mostly OTHER, so BMAX asks the issuer first and falls back to the catalog.
+    assert.deepEqual(calls, ["BMAX.TO", "HYLD.TO"]);
   });
 
   it("separates a known fund with no holdings from an unknown ticker", async () => {

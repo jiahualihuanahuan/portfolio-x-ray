@@ -32,8 +32,9 @@ ENV NODE_ENV=production \
     OLLAMA_MODEL=qwen3.5:9b \
     SEARCH_URL=http://192.168.86.35:8099 \
     SEARCH_ENGINE=searxng
+# poppler-utils: pdftotext reads leverage (loans payable) from Brompton Portfolio Summary PDFs.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates poppler-utils \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /data/lookthru /app/scripts && chown -R node:node /data /app
 COPY --from=build --chown=node:node /app/.output ./.output

@@ -1,3 +1,5 @@
+import { bromptonFund } from "./brompton";
+import { bromptonHoldingsCached } from "./brompton.server";
 import { catalogInstrument } from "./catalog";
 import { fileHoldingName, fileHoldings } from "./holdings-file";
 import { holdingsAreUsable } from "./holdings-parse";
@@ -9,6 +11,8 @@ const ISSUER_LABEL: Record<string, string> = {
   hamilton: "Hamilton ETFs (live)",
   evolve: "Evolve ETFs (live)",
   purpose: "Purpose Investments (live)",
+  brompton: "Brompton Group (bromptongroup.com, cached)",
+  index: "Index holdings file (issuer CSV)",
   file: "Holdings file",
 };
 
@@ -27,6 +31,13 @@ export const serverFundLookupDeps: FundLookupDeps = {
     };
   },
   fromCatalog(symbol) {
+    // Brompton funds: the cached bromptongroup.com list (with leverage) is newer than the snapshot.
+    if (bromptonFund(symbol)) {
+      const cached = bromptonHoldingsCached(symbol);
+      if (cached && holdingsAreUsable(cached.holdings)) {
+        return { symbol: cached.ticker, holdings: cached.holdings, name: cached.name, asOf: cached.asOf, source: "Brompton Group (bromptongroup.com, cached)", sourceUrl: cached.source, scope: "top 25 holdings (quarterly)" };
+      }
+    }
     const c = catalogInstrument(symbol);
     if (!c || !holdingsAreUsable(c.holdings)) return null;
     return { symbol: c.symbol, holdings: c.holdings!, name: c.name, asOf: c.asOf, source: "Bundled catalog snapshot" };
