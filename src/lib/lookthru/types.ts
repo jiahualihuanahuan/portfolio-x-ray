@@ -23,12 +23,16 @@ export type Instrument = {
   source: DataSource;
   asOf?: string;
   coverage: number;
+  /** Trading date of `price` (Toronto, YYYY-MM-DD) when known. */
+  priceDate?: string;
 };
 
 export type Position = {
   id: string;
   ticker: string;
   shares: number;
+  /** Currency you declared (pasted Currency column, US exchange, trailing USD/CAD) or confirmed. */
+  currency?: "CAD" | "USD";
 };
 
 export type LeafExposure = {

@@ -4,7 +4,7 @@
  * live quote and no cached copy exist, callers get `null` and must show an error.
  */
 
-export type FxSource = "live" | "cache" | "manual";
+export type FxSource = "live" | "cache" | "manual" | "prices-db";
 
 export type FxRate = {
   /** CAD per 1 USD. */
@@ -13,6 +13,8 @@ export type FxRate = {
   asOf: string;
   source: FxSource;
   pair: string;
+  /** Trading date the rate belongs to (Toronto, YYYY-MM-DD), when known. */
+  date?: string;
 };
 
 export type FxResolution = { fx: FxRate; error: null } | { fx: null; error: string };

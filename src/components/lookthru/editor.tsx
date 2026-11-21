@@ -21,7 +21,7 @@ export function PortfolioEditor({
   disabled,
 }: {
   onAdd: (ticker: string, shares: number) => void;
-  onPaste: (rows: { ticker: string; shares: number }[]) => void;
+  onPaste: (rows: { ticker: string; shares: number; currency?: "CAD" | "USD" }[]) => void;
   onSample: () => void;
   onClear: () => void;
   disabled?: boolean;

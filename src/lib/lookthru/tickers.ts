@@ -1,3 +1,4 @@
+import { exchangeCurrency, parseCcy } from "./currency.ts";
 const EXCHANGE_SUFFIX = /\.(TO|NE|V|CN|NEO)$/i;
 
 export const ALIASES: Record<string, string> = {
@@ -278,7 +279,9 @@ function listingFromBroker(symbol: string, exchange: string, mic: string, securi
 }
 
 /** Wealthsimple / Questrade-style holdings CSV, or ticker+shares lines. */
-export function parseBrokerCsv(text: string): { ticker: string; shares: number }[] {
+export type PastedRow = { ticker: string; shares: number; currency?: "CAD" | "USD" };
+
+export function parseBrokerCsv(text: string): PastedRow[] {
   const rawLines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   const lines = rawLines.filter((ln) => ln.trim() && !/^\s*"?as of/i.test(ln));
   if (lines.length < 2) return [];
@@ -290,7 +293,9 @@ export function parseBrokerCsv(text: string): { ticker: string; shares: number }
   const iMic = headerIndex(headers, "MIC");
   const iType = headerIndex(headers, "Security Type", "Type", "Asset Type");
   const iDir = headerIndex(headers, "Position Direction", "Direction");
+  const iCcy = headerIndex(headers, "Currency", "Market Price Currency", "Market Value Currency", "Listing Currency");
   const map = new Map<string, number>();
+  const ccy = new Map<string, "CAD" | "USD">();
   for (const line of lines.slice(1)) {
     const cols = splitCsvLine(line);
     const symbol = (cols[iSym] ?? "").trim();
@@ -306,27 +311,34 @@ export function parseBrokerCsv(text: string): { ticker: string; shares: number }
     );
     if (!ticker) continue;
     map.set(ticker, (map.get(ticker) ?? 0) + signed);
+    const c =
+      parseCcy(iCcy >= 0 ? cols[iCcy] : "") ??
+      exchangeCurrency(iEx >= 0 ? (cols[iEx] ?? "") : "", iMic >= 0 ? (cols[iMic] ?? "") : "") ??
+      undefined;
+    if (c && ticker !== "CASH") ccy.set(ticker, c);
   }
   return [...map.entries()]
     .filter(([, shares]) => shares !== 0)
-    .map(([ticker, shares]) => ({ ticker, shares }));
+    .map(([ticker, shares]) => (ccy.has(ticker) ? { ticker, shares, currency: ccy.get(ticker)! } : { ticker, shares }));
 }
 
-export function parsePaste(text: string): { ticker: string; shares: number }[] {
+/** Broker CSV, or lines like "HYLD.TO 7070" / "AAPL 10 USD" (an optional trailing CAD/USD declares the currency). */
+export function parsePaste(text: string): PastedRow[] {
   const csv = parseBrokerCsv(text);
   if (csv.length) return csv;
-  const rows: { ticker: string; shares: number }[] = [];
+  const rows: PastedRow[] = [];
   for (const line of text.split(/\n|;/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const match = trimmed.match(
-      /^([A-Za-z][A-Za-z0-9.\-/=]{0,20})[\s,=:\t]+(-?\d+(?:\.\d+)?)\s*$/,
+      /^([A-Za-z][A-Za-z0-9.\-/=]{0,20})[\s,=:\t]+(-?\d+(?:\.\d+)?)(?:[\s,]+(CAD|USD))?\s*$/i,
     );
     if (!match) continue;
     const ticker = normalizeTicker(match[1] ?? "");
     const shares = Number(match[2]);
     if (!ticker || !Number.isFinite(shares) || shares === 0) continue;
-    rows.push({ ticker, shares });
+    const currency = parseCcy(match[3]);
+    rows.push(currency ? { ticker, shares, currency } : { ticker, shares });
   }
   return rows;
 }
@@ -342,6 +354,8 @@ export function candidateSymbols(ticker: string): string[] {
     extra.push(s.replace(/-([A-Z])\.(TO|NE)$/i, ".$1.$2"));
     extra.push(s.replace(/\.([A-Z])$/i, "-$1.TO"));
     extra.push(s.replace(/-([A-Z])$/i, ".$1.TO"));
+    // Trust units / REITs: REI.UN → REI-UN.TO on Yahoo.
+    extra.push(s.replace(/\.UN$/i, "-UN.TO"));
   }
   out.push(...extra);
   if (!n.includes(".") && !n.includes("=") && !n.includes("-USD")) {

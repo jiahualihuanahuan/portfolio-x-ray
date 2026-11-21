@@ -12,7 +12,7 @@ import { contextFromLookthrough } from "@/lib/lookthru/ask";
 import { composeEtfCad } from "@/lib/lookthru/compose-safe";
 import { formatMoney, formatPct } from "@/lib/lookthru/format";
 import { usePortfolio } from "@/lib/lookthru/store";
-import { applyAlias } from "@/lib/lookthru/tickers";
+import { normalizeTicker } from "@/lib/lookthru/tickers";
 
 /**
  * Tab 1 — ETF breakdown: pick one fund and see only what it owns, unrolled to single stocks by the
@@ -25,7 +25,7 @@ export function EtfBreakdown() {
   const [amountText, setAmountText] = useState(String(amount));
   const [provider, setProvider] = useState<string | undefined>(undefined);
 
-  const symbol = ticker ? applyAlias(ticker) : "";
+  const symbol = ticker ? normalizeTicker(ticker) : "";
   const query = useQuery({
     queryKey: ["lookthru", [symbol]],
     enabled: Boolean(symbol),
@@ -110,6 +110,10 @@ export function EtfBreakdown() {
         </p>
       ) : composed?.error ? (
         <p className="rounded-xl bg-surface p-6 text-sm text-down border border-down/40">{composed.error}</p>
+      ) : composed?.excluded.length ? (
+        <p className="rounded-xl bg-surface p-6 text-sm text-down border border-down/40">
+          {composed.excluded[0].flag.message} Use a ticker with a listing suffix (for example .TO, .NE or .U).
+        </p>
       ) : result && pos && result.nav > 0 ? (
         <>
           <section className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-line border border-line sm:grid-cols-3 lg:grid-cols-6">

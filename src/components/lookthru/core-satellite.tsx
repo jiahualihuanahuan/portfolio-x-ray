@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, Plus, X } from "lucide-react";
+import { CurrencyBadge, useCurrencyLabel } from "@/components/lookthru/currency-ui";
 import { useMemo, type ReactNode } from "react";
 import { ClassificationSelect } from "@/components/lookthru/classification";
 import { Badge } from "@/components/lookthru/ui/badge";
@@ -120,7 +121,10 @@ export function CoreSatellite({ result, globalBand }: { result: LookthroughResul
           <div className="mt-2 flex flex-wrap gap-2">
             {unassigned.map((u) => (
               <div key={u.ticker} className="flex items-center gap-1.5 rounded-md border border-line bg-elevated/40 py-1 pr-1 pl-2">
-                <span className="font-mono text-xs">{u.ticker}</span>
+                <span className="font-mono text-xs">
+                  {u.ticker}
+                  <CurrencyBadge ticker={u.ticker} />
+                </span>
                 <span className="text-[11px] text-subtle">{formatMoney(u.value, "CAD")}</span>
                 <ClassificationSelect ticker={u.ticker} buckets={buckets} placeholder="Assign to…" className="h-7" />
               </div>
@@ -343,6 +347,7 @@ function HoldingsPicker({
   bucket: Bucket;
   onPick: (ticker: string) => void;
 }) {
+  const ccyLabel = useCurrencyLabel();
   const options = holdings.filter((t) => {
     const c = classificationOf(buckets, t);
     return !(c.kind === "bucket" && c.id === bucket.id);
@@ -369,6 +374,7 @@ function HoldingsPicker({
           return (
             <option key={t} value={t}>
               {t}
+              {ccyLabel(t)}
               {where}
             </option>
           );

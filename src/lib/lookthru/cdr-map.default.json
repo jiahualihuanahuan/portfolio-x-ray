@@ -1,0 +1,63 @@
+{
+  "_comment": "CDR mapping: how you write a CDR \u2192 its Yahoo listing (CAD, Cboe Canada .NE) and the underlying US ticker (identification only; never used for pricing). Edit freely, or put your own copy at /data/lookthru/cdr-map.json (CDR_MAP_FILE); entries there override these. Trust units like REI.UN are NOT CDRs and should not be listed. Listings checked on Yahoo 2026-11-21 (Coca-Cola is COLA.NE, not KO.NE).",
+  "AAPL.UN": {
+    "listing": "AAPL.NE",
+    "underlying": "AAPL"
+  },
+  "AMZN.UN": {
+    "listing": "AMZN.NE",
+    "underlying": "AMZN"
+  },
+  "GOOG.UN": {
+    "listing": "GOOG.NE",
+    "underlying": "GOOGL"
+  },
+  "META.UN": {
+    "listing": "META.NE",
+    "underlying": "META"
+  },
+  "MSFT.UN": {
+    "listing": "MSFT.NE",
+    "underlying": "MSFT"
+  },
+  "NVDA.UN": {
+    "listing": "NVDA.NE",
+    "underlying": "NVDA"
+  },
+  "TSLA.UN": {
+    "listing": "TSLA.NE",
+    "underlying": "TSLA"
+  },
+  "NFLX.UN": {
+    "listing": "NFLX.NE",
+    "underlying": "NFLX"
+  },
+  "KO.UN": {
+    "listing": "COLA.NE",
+    "underlying": "KO"
+  },
+  "COST.UN": {
+    "listing": "COST.NE",
+    "underlying": "COST"
+  },
+  "JPM.UN": {
+    "listing": "JPM.NE",
+    "underlying": "JPM"
+  },
+  "AMD.UN": {
+    "listing": "AMD.NE",
+    "underlying": "AMD"
+  },
+  "DIS.UN": {
+    "listing": "DIS.NE",
+    "underlying": "DIS"
+  },
+  "WMT.UN": {
+    "listing": "WMT.NE",
+    "underlying": "WMT"
+  },
+  "BRK.UN": {
+    "listing": "BRK.NE",
+    "underlying": "BRK.B"
+  }
+}

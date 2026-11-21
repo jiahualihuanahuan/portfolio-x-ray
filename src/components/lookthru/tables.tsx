@@ -3,6 +3,7 @@ import { Badge } from "@/components/lookthru/ui/badge";
 import { Button } from "@/components/lookthru/ui/button";
 import { Input } from "@/components/lookthru/ui/input";
 import { ClassificationSelect } from "@/components/lookthru/classification";
+import { CurrencyBadge, NativePrice } from "@/components/lookthru/currency-ui";
 import type { Bucket } from "@/lib/lookthru/core-satellite";
 import { formatChange, formatMoney, formatPct } from "@/lib/lookthru/format";
 import { usePortfolio } from "@/lib/lookthru/store";
@@ -85,7 +86,10 @@ function PositionRow({
     <tr className="border-b border-line/70 last:border-0">
       <td className="px-4 py-3">
         <div className="flex flex-col">
-          <span className="font-mono text-sm">{row.ticker}</span>
+          <span className="font-mono text-sm">
+            {row.ticker}
+            <CurrencyBadge ticker={row.ticker} />
+          </span>
           <span className="max-w-[240px] truncate text-xs text-muted">{row.name}</span>
         </div>
       </td>
@@ -113,6 +117,7 @@ function PositionRow({
               ? formatMoney(row.value / row.shares, currency, true)
               : formatMoney(row.price, row.currency, true)}
         </div>
+        <NativePrice ticker={row.ticker} />
         {row.price != null && row.currency && row.currency.toUpperCase() !== currency ? (
           <div className="text-[11px] text-subtle">
             {formatMoney(row.price, row.currency, true)} {row.currency.toUpperCase()}

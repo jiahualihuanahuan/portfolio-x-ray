@@ -6,6 +6,9 @@ import { applyAlias, candidateSymbols, displaySymbol, issuerKey, normalizeTicker
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseCachedFx, parseOverride, resolveFx, type FxRate } from "./fx";
+import { cdrLookup, parseCdrMap, type CdrMap } from "./cdr-map";
+import cdrDefaults from "./cdr-map.default.json";
+import { isBareTicker, resolveFxForDate, suffixCurrency, type ListingInfo } from "./currency";
 import type { AssetKind, DataSource, HoldingLine, Instrument } from "./types";
 
 const UA =
@@ -19,6 +22,8 @@ const CONCURRENCY = 6;
 type Quote = {
   symbol: string;
   name: string;
+  /** Trading date of the price, Toronto time (YYYY-MM-DD). */
+  priceDate?: string;
   price: number;
   currency: string;
   changePct: number | null;
@@ -114,6 +119,11 @@ function rawNumber(v: unknown): number | null {
 
 let forceQuotes = false;
 
+function torontoDay(epochSeconds: number | null, now = new Date()): string {
+  const d = epochSeconds != null && epochSeconds > 0 ? new Date(epochSeconds * 1000) : now;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
 async function fetchQuote(symbol: string): Promise<Quote | null> {
   if (!forceQuotes) {
     const cached = quoteCache.get(symbol);
@@ -147,6 +157,7 @@ async function fetchQuote(symbol: string): Promise<Quote | null> {
       currency: String(meta.currency ?? "USD"),
       changePct: rawNumber(meta.regularMarketChangePercent),
       kind,
+      priceDate: torontoDay(rawNumber(meta.regularMarketTime)),
     };
     quoteCache.set(symbol, { at: Date.now(), value: quote });
     quoteCache.set(quote.symbol, { at: Date.now(), value: quote });
@@ -388,6 +399,7 @@ function mergeInstrument(
     source,
     asOf: issuer?.asOf ?? catalog?.asOf,
     coverage,
+    priceDate: quote.priceDate,
   };
 }
 
@@ -404,43 +416,125 @@ function readFxCache(): FxRate | null {
   }
 }
 
-function writeFxCache(fx: FxRate): void {
+function writeFxCache(fx: FxRate, date: string): void {
   try {
     mkdirSync(dirname(fxCacheFile()), { recursive: true });
-    writeFileSync(fxCacheFile(), JSON.stringify({ rate: fx.rate, asOf: fx.asOf, pair: fx.pair }, null, 2));
+    writeFileSync(fxCacheFile(), JSON.stringify({ rate: fx.rate, asOf: fx.asOf, pair: fx.pair, date }, null, 2));
   } catch {
     // Read-only filesystem: the in-memory quote cache still applies.
   }
 }
 
-let lastLiveFx: FxRate | null = null;
+/** Cached json rate with its rate date (falls back to the fetch date). */
+function cachedFxDated(): { rate: number; date: string } | null {
+  const c = readFxCache();
+  if (!c) return null;
+  let date = torontoDay(Date.parse(c.asOf) / 1000);
+  try {
+    const raw = JSON.parse(readFileSync(fxCacheFile(), "utf8")) as { date?: string };
+    if (typeof raw.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.date)) date = raw.date;
+  } catch {
+    /* keep fetch date */
+  }
+  return { rate: c.rate, date };
+}
+
+/** USDCAD=X daily closes from prices.sqlite (filled by the daily prefetch and by live reads). */
+async function fxDbRows(): Promise<{ date: string; close: number | null }[]> {
+  try {
+    const { getPrices } = await import("./prices-db");
+    return getPrices("USDCAD=X").map((r) => ({ date: r.date, close: r.close }));
+  } catch {
+    return [];
+  }
+}
+
+async function storeFxInDb(date: string, rate: number): Promise<void> {
+  try {
+    const { upsertPrices } = await import("./prices-db");
+    upsertPrices([{ ticker: "USDCAD=X", date, close: rate, adjclose: rate }]);
+  } catch {
+    /* sqlite unavailable: the json cache still has it */
+  }
+}
+
+let lastLiveFx: { pair: string; rate: number; date: string; asOf: string } | null = null;
+
+/** FX sources for a date, in priority order (see resolveFxForDate). */
+export async function fxSources() {
+  return {
+    override: parseOverride(process.env["FX_USDCAD_OVERRIDE"]),
+    dbRows: await fxDbRows(),
+    cached: cachedFxDated(),
+  };
+}
 
 /**
- * FX_USDCAD_OVERRIDE if set; else live Yahoo FX_PAIR (default USDCAD=X, then CAD=X); else the disk
- * cache; else an explicit error. No constant fallback.
+ * The USD→CAD rate the app uses today. Order: FX_USDCAD_OVERRIDE (manual) → prices.sqlite USDCAD=X on or
+ * before today → fx-usdcad.json → error. A successful live Yahoo read (FX_PAIR, then USDCAD=X, CAD=X)
+ * is first written into prices.sqlite (for its own trading date) and the json, so all paths agree.
  */
 export async function usdCadRate(): Promise<{ fx: FxRate | null; error: string | null }> {
   const override = parseOverride(process.env["FX_USDCAD_OVERRIDE"]);
-  if (override != null) return resolveFx(null, null, new Date(), override);
+  if (override != null) {
+    const r = resolveFx(null, null, new Date(), override);
+    return r.fx ? { fx: { ...r.fx, date: torontoDay(null) }, error: null } : r;
+  }
   const primary = (process.env["FX_PAIR"] || "USDCAD=X").trim();
-  let live: { rate: number | null; pair: string } | null = null;
   for (const pair of [...new Set([primary, "USDCAD=X", "CAD=X"])]) {
     const q = await fetchQuote(pair);
     if (q?.price && q.price > 0) {
-      live = { rate: q.price, pair };
+      const rate = q.price < 1 ? 1 / q.price : q.price;
+      const date = q.priceDate ?? torontoDay(null);
+      if (!lastLiveFx || lastLiveFx.rate !== rate || lastLiveFx.date !== date) {
+        lastLiveFx = { pair, rate, date, asOf: new Date().toISOString() };
+        writeFxCache({ rate, asOf: lastLiveFx.asOf, source: "live", pair }, date);
+        await storeFxInDb(date, rate);
+      }
       break;
     }
   }
-  // Within the 5-minute quote cache keep the original fetch time instead of "now".
-  if (live && lastLiveFx && lastLiveFx.pair === live.pair && lastLiveFx.rate === (live.rate! < 1 ? 1 / live.rate! : live.rate)) {
-    return { fx: lastLiveFx, error: null };
+  const today = torontoDay(null);
+  const point = resolveFxForDate(today, await fxSources());
+  if (!point) return resolveFx(null, null);
+  const live = lastLiveFx && point.source === "prices-db" && point.date === lastLiveFx.date && point.rate === lastLiveFx.rate;
+  return {
+    fx: {
+      rate: point.rate,
+      asOf: live ? lastLiveFx!.asOf : `${point.date}T21:00:00.000Z`,
+      source: live ? "live" : point.source,
+      pair: live ? lastLiveFx!.pair : point.source === "prices-db" ? "USDCAD=X (prices.sqlite)" : "fx-usdcad.json",
+      date: point.date,
+    },
+    error: null,
+  };
+}
+
+let cdrCache: { at: number; map: CdrMap } | null = null;
+
+/** Bundled CDR map merged with the editable /data/lookthru/cdr-map.json (CDR_MAP_FILE). */
+export function loadCdrMap(): CdrMap {
+  if (cdrCache && Date.now() - cdrCache.at < 60_000) return cdrCache.map;
+  const base = parseCdrMap(cdrDefaults);
+  let extra: CdrMap = {};
+  try {
+    extra = parseCdrMap(JSON.parse(readFileSync(process.env["CDR_MAP_FILE"] || "/data/lookthru/cdr-map.json", "utf8")));
+  } catch {
+    /* optional file */
   }
-  const res = resolveFx(live, live ? null : readFxCache());
-  if (res.fx?.source === "live") {
-    lastLiveFx = res.fx;
-    writeFxCache(res.fx);
+  const map = { ...base, ...extra };
+  cdrCache = { at: Date.now(), map };
+  return map;
+}
+
+/** Quote for the USD units of a Canadian ETF typed as HYLD.U / HYLD-U.TO. */
+async function usdUnitQuote(ticker: string): Promise<Quote | null> {
+  const base = ticker.toUpperCase().replace(/\.(TO|NE|V)$/, "").replace(/[.-]U$/, "");
+  for (const cand of [`${base}-U.TO`, `${base}.U.TO`, `${base}-U.NE`, `${base}-U`]) {
+    const q = await fetchQuote(cand);
+    if (q && q.currency.toUpperCase() === "USD") return q;
   }
-  return res;
+  return null;
 }
 
 export async function analyzeTickers(tickers: string[], live = false): Promise<{
@@ -451,6 +545,8 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
   fx: FxRate | null;
   fxError: string | null;
   warnings: string[];
+  /** Per typed ticker (normalized): currency facts for USD/CDR handling (see currency.ts). */
+  listings: Record<string, ListingInfo>;
 }> {
   const warnings: string[] = [];
   const aliases: Record<string, string> = {};
@@ -465,9 +561,10 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
   const seen = new Set<string>();
   let processed = 0;
 
+  const cdrMap = loadCdrMap();
   for (const t of tickers) {
-    const a = applyAlias(t);
-    queue.push({ symbol: a, depth: 0 });
+    const mapped = cdrLookup(cdrMap, t)?.listing ?? t;
+    queue.push({ symbol: applyAlias(mapped), depth: 0 });
   }
 
   while (queue.length && processed < MAX_INSTRUMENTS) {
@@ -569,6 +666,7 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
     });
   }
 
+  const listings = await buildListings(tickers, instruments, aliases, cdrMap);
   return {
     instruments,
     aliases,
@@ -576,6 +674,7 @@ export async function analyzeTickers(tickers: string[], live = false): Promise<{
     fx: fxRes.fx,
     fxError: fxRes.error,
     warnings: [...new Set(warnings)],
+    listings,
   };
   } finally {
     forceQuotes = previous;
@@ -627,4 +726,72 @@ export async function fetchRealizedEps(symbol: string): Promise<import("./prices
 export async function fetchFxQuote(pair: string): Promise<number | null> {
   const q = await fetchQuote(pair);
   return q && q.price > 0 ? q.price : null;
+}
+
+/** Currency facts per typed ticker: listing, quote currency, price date, CAD alternative, CDR, FX. */
+async function buildListings(
+  tickers: string[],
+  instruments: Record<string, Instrument>,
+  aliases: Record<string, string>,
+  cdrMap: CdrMap,
+): Promise<Record<string, ListingInfo>> {
+  const out: Record<string, ListingInfo> = {};
+  let sources = await fxSources();
+  let backfilled = false;
+  /** Rate for a price date; if prices.sqlite has nothing that old, fetch USDCAD=X daily history once. */
+  const fxFor = async (date: string | null) => {
+    const d = date ?? torontoDay(null);
+    let point = resolveFxForDate(d, sources);
+    if (!point && !backfilled) {
+      backfilled = true;
+      try {
+        const { fetchAndStoreTicker } = await import("./prices-prefetch");
+        await fetchAndStoreTicker("USDCAD=X");
+        sources = await fxSources();
+        point = resolveFxForDate(d, sources);
+      } catch {
+        /* offline: the row stays flagged "no rate" */
+      }
+    }
+    return point;
+  };
+  for (const raw of tickers) {
+    const t = normalizeTicker(raw);
+    const cdr = cdrLookup(cdrMap, t);
+    const typed = cdr?.listing ?? t;
+    const sym = aliases[applyAlias(typed)] ?? aliases[normalizeTicker(typed)] ?? null;
+    const inst = sym ? instruments[sym] : undefined;
+    if (cdr && inst) aliases[applyAlias(t)] ??= inst.symbol;
+    let info: ListingInfo = {
+      symbol: inst?.price != null ? inst.symbol : null,
+      quoteCurrency: inst?.currency ?? null,
+      priceDate: inst?.priceDate ?? null,
+      name: inst?.name ?? null,
+      cadListing: null,
+      cdrUnderlying: cdr?.underlying ?? (inst?.name && /\bCDR\b/i.test(inst.name) ? issuerKey(inst.symbol) : null),
+      fx: null,
+      price: inst?.price ?? null,
+    };
+    if (!cdr && suffixCurrency(t) === "USD" && !/-USD$|=X$/.test(t) && !/[.-]UN(\.(TO|NE|V))?$/.test(applyAlias(t))) {
+      // USD units (HYLD.U): price from the USD listing; holdings still come from the CAD fund.
+      const q = await usdUnitQuote(t);
+      info = q
+        ? { ...info, symbol: q.symbol, quoteCurrency: "USD", priceDate: q.priceDate ?? null, price: q.price, name: q.name }
+        : { ...info, symbol: inst && inst.currency.toUpperCase() === "USD" ? inst.symbol : null };
+    } else if (!cdr && isBareTicker(t) && info.symbol && (info.quoteCurrency ?? "").toUpperCase() === "USD") {
+      // Bare ticker priced in USD: is there also a CAD listing (CDR on Cboe Canada, or TSX)?
+      for (const cand of [`${t}.NE`, `${t}.TO`]) {
+        const q = await fetchQuote(cand);
+        if (q && q.currency.toUpperCase() === "CAD") {
+          info.cadListing = q.symbol;
+          if (!instruments[q.symbol]) instruments[q.symbol] = mergeInstrument(q, catalogInstrument(q.symbol), null, null);
+          aliases[applyAlias(q.symbol)] ??= q.symbol;
+          break;
+        }
+      }
+    }
+    if ((info.quoteCurrency ?? "").toUpperCase() === "USD") info.fx = await fxFor(info.priceDate);
+    out[t] = info;
+  }
+  return out;
 }

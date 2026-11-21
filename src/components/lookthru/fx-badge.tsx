@@ -30,7 +30,7 @@ export function formatFxTime(iso: string): string {
   });
 }
 
-const LABEL: Record<FxRate["source"], string> = { live: "live", cache: "cached", manual: "manual" };
+const LABEL: Record<FxRate["source"], string> = { live: "live", cache: "saved rate", manual: "manual", "prices-db": "prices.sqlite" };
 
 /** Header chip: "All amounts in CAD · USD→CAD 1.3712 (live, Nov 21, 9:30 a.m. EST)". */
 export function FxBadge() {
@@ -51,7 +51,11 @@ export function FxBadge() {
       ) : fx ? (
         <p className="text-muted" title={`Source: Yahoo ${fx.pair}`}>
           USD→CAD <span className="font-mono text-fg">{fx.rate.toFixed(4)}</span> · {LABEL[fx.source]}
-          {fx.source === "manual" ? " (FX_USDCAD_OVERRIDE)" : ` · ${formatFxTime(fx.asOf)}`}
+          {fx.source === "manual"
+            ? " (FX_USDCAD_OVERRIDE)"
+            : fx.source === "live"
+              ? ` · ${formatFxTime(fx.asOf)}`
+              : ` · rate of ${fx.date ?? formatFxTime(fx.asOf)}`}
         </p>
       ) : (
         <p className="max-w-xs text-down">{err ?? "USD→CAD rate unavailable."}</p>

@@ -14,8 +14,12 @@ type PortfolioState = {
   currency: CurrencyCode;
   setHydrated: () => void;
   setCurrency: (c: CurrencyCode) => void;
-  addPosition: (ticker: string, shares: number) => void;
-  addMany: (rows: { ticker: string; shares: number }[]) => void;
+  addPosition: (ticker: string, shares: number, currency?: "CAD" | "USD") => void;
+  addMany: (rows: { ticker: string; shares: number; currency?: "CAD" | "USD" }[]) => void;
+  /** Confirm a holding's currency (Needs your confirmation list). */
+  setPositionCurrency: (id: string, currency: "CAD" | "USD") => void;
+  /** Replace a holding's ticker (merges into an existing row with the new ticker). */
+  fixTicker: (id: string, ticker: string, currency?: "CAD" | "USD") => void;
   updateShares: (id: string, shares: number) => void;
   removePosition: (id: string) => void;
   loadSample: () => void;
@@ -49,11 +53,12 @@ function nid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function toPositions(rows: { ticker: string; shares: number }[]): Position[] {
+function toPositions(rows: { ticker: string; shares: number; currency?: "CAD" | "USD" }[]): Position[] {
   return rows.map((r) => ({
     id: nid(),
     ticker: normalizeTicker(r.ticker),
     shares: r.shares,
+    ...(r.currency ? { currency: r.currency } : {}),
   }));
 }
 
@@ -66,22 +71,57 @@ export const usePortfolio = create<PortfolioState>()(
       setHydrated: () => set({ hydrated: true }),
       // CAD-only since the CAD switch; kept so older callers compile.
       setCurrency: () => set({ currency: "CAD" }),
-      addPosition: (ticker, shares) => {
+      addPosition: (ticker, shares, currency) => {
         const t = normalizeTicker(ticker);
         if (!t || !Number.isFinite(shares) || shares === 0) return;
         const existing = get().positions.find((p) => p.ticker === t);
         if (existing) {
           set({
             positions: get().positions.map((p) =>
-              p.id === existing.id ? { ...p, shares: p.shares + shares } : p,
+              p.id === existing.id
+                ? { ...p, shares: p.shares + shares, ...(currency ? { currency } : {}) }
+                : p,
             ),
           });
           return;
         }
-        set({ positions: [...get().positions, { id: nid(), ticker: t, shares }] });
+        set({
+          positions: [
+            ...get().positions,
+            { id: nid(), ticker: t, shares, ...(currency ? { currency } : {}) },
+          ],
+        });
       },
       addMany: (rows) => {
-        for (const row of rows) get().addPosition(row.ticker, row.shares);
+        for (const row of rows) get().addPosition(row.ticker, row.shares, row.currency);
+      },
+      setPositionCurrency: (id, currency) =>
+        set({ positions: get().positions.map((p) => (p.id === id ? { ...p, currency } : p)) }),
+      fixTicker: (id, ticker, currency) => {
+        const t = normalizeTicker(ticker);
+        const row = get().positions.find((p) => p.id === id);
+        if (!t || !row) return;
+        const other = get().positions.find((p) => p.ticker === t && p.id !== id);
+        if (other) {
+          set({
+            positions: get()
+              .positions.filter((p) => p.id !== id)
+              .map((p) =>
+                p.id === other.id
+                  ? { ...p, shares: p.shares + row.shares, ...(currency ? { currency } : {}) }
+                  : p,
+              ),
+          });
+          return;
+        }
+        set({
+          positions: get().positions.map((p) => {
+            if (p.id !== id) return p;
+            const next: Position = { id: p.id, ticker: t, shares: p.shares };
+            if (currency) next.currency = currency;
+            return next;
+          }),
+        });
       },
       updateShares: (id, shares) => {
         if (!Number.isFinite(shares) || shares <= 0) return;

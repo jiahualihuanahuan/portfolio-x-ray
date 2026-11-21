@@ -14,7 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/lookthru/
 import { analyzeHoldings } from "@/lib/lookthru/analyze";
 import { composeCad } from "@/lib/lookthru/compose-safe";
 import { usePortfolio, type AppTab } from "@/lib/lookthru/store";
-import { applyAlias } from "@/lib/lookthru/tickers";
+import { normalizeTicker } from "@/lib/lookthru/tickers";
+import type { PositionCurrency } from "@/lib/lookthru/currency";
+import { CurrencyProvider, NeedsConfirmation } from "@/components/lookthru/currency-ui";
 
 export function LookthruApp() {
   const hydrated = usePortfolio((s) => s.hydrated);
@@ -41,7 +43,8 @@ export function LookthruApp() {
   }, [setHydrated]);
 
   const tickers = useMemo(
-    () => [...new Set(positions.map((p) => applyAlias(p.ticker)))],
+    // Typed tickers (not aliases) so the server can tell HYLD.U (USD units) from HYLD.TO.
+    () => [...new Set(positions.map((p) => normalizeTicker(p.ticker)))],
     [positions],
   );
 
@@ -74,6 +77,16 @@ export function LookthruApp() {
   const composed = useMemo(() => (analysis ? composeCad(positions, analysis) : null), [analysis, positions]);
   const result = composed?.result ?? null;
   const fxError = composed?.error ?? null;
+  const excluded = composed?.excluded ?? [];
+  // Currency facts per typed ticker, for the USD / CDR flags in every holdings list.
+  const currencyByTicker = useMemo(() => {
+    const m: Record<string, PositionCurrency> = {};
+    for (const p of positions) {
+      const c = composed?.byPosition[p.id];
+      if (c) m[normalizeTicker(p.ticker)] = c;
+    }
+    return m;
+  }, [composed, positions]);
 
   // Loading while a portfolio exists but has no result yet, otherwise the empty prompt.
   const portfolioPlaceholder = fxError ? (
@@ -85,6 +98,7 @@ export function LookthruApp() {
   );
 
   return (
+    <CurrencyProvider value={currencyByTicker}>
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <Toaster theme="dark" position="bottom-right" />
       <Header />
@@ -116,6 +130,8 @@ export function LookthruApp() {
             onClear={clear}
             disabled={!hydrated}
           />
+
+          <NeedsConfirmation items={excluded} />
 
           {result ? (
             <>
@@ -153,17 +169,22 @@ export function LookthruApp() {
         </TabsContent>
 
         <TabsContent value="rebalance">
-          <RebalanceTab result={result} error={fxError} />
+          <div className="space-y-4">
+            <NeedsConfirmation items={excluded} compact />
+            <RebalanceTab result={result} error={fxError} />
+          </div>
         </TabsContent>
       </Tabs>
 
       <footer className="border-t border-line pt-4 text-[11px] text-subtle">
-        All amounts in CAD; USD prices are converted at the USD→CAD rate shown at the top.
+        All amounts in CAD. USD holdings (flagged USD) are converted at the USD→CAD rate for their
+        price date; CDRs (.NE, .UN) are already in CAD and are not converted.
         Quotes delayed via Yahoo Finance. ETF weights come from each issuer’s latest
         holdings file when available, then Yahoo, then last disclosed snapshots. Leverage
         (negative cash) can push equity exposure above 100%. Not investment advice.
       </footer>
     </div>
+    </CurrencyProvider>
   );
 }
 

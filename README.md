@@ -75,13 +75,45 @@ Put your own LAN addresses only in `.env`.
 
 ## Currency: everything in CAD
 
-All amounts are in Canadian dollars (shown as C$). USD-priced securities are converted with the live Yahoo
-`USDCAD=X` rate (`FX_PAIR`), refreshed every 5 minutes and saved to `/data/lookthru/fx-usdcad.json`
-(`FX_CACHE_FILE`). The header shows the rate, whether it is live, cached or manual, and when it was
-fetched (Toronto time). If Yahoo is unreachable the last saved rate is used. If there is no saved rate either,
-the app shows an error instead of guessing a rate. Set `FX_USDCAD_OVERRIDE=1.37` to use a fixed rate
-instead; the header then labels it "manual". The Positions table shows the CAD price with the original
-USD quote beneath it.
+All amounts are in Canadian dollars (C$). Allocation, targets, deviation, core-satellite and rebalancing
+all run on CAD values.
+
+**Which holdings are USD.** A holding counts as USD when you say so or when its listing says so:
+- a Currency column in a pasted broker CSV, or a US exchange (NYSE, NASDAQ, …);
+- a trailing `USD` on a pasted line (`AAPL 10 USD`; `CAD` works the same way);
+- a `.U` / `-U.TO` suffix (USD units of a Canadian ETF, priced from the USD listing);
+- a bare ticker that only has a US listing (IBIT).
+
+USD rows show a **USD** flag in the Positions table and in the holdings pickers.
+
+**CDRs are CAD.** `.NE` (Cboe Canada, e.g. `AAPL.NE`) and `.UN` (e.g. `KO.UN`) are always CAD. They are
+used at their listed value, never converted and never flagged. `.UN` is also used by REITs and trusts
+(`REI.UN`), so the app does not map every `X.UN` to a US ticker. An underlying ticker ("CDR · KO") is
+shown only for known CDRs: the quote name contains "CDR", or the ticker is in the CDR mapping file.
+The bundled list is `src/lib/lookthru/cdr-map.default.json`. To add or override entries, copy it to
+`/data/lookthru/cdr-map.json` (`CDR_MAP_FILE`) and edit it, e.g.
+`"KO.UN": { "listing": "KO.NE", "underlying": "KO" }`. Changes are picked up within a minute.
+
+**Which USD→CAD rate.** Each USD holding is converted at the rate for its price date. The first source
+that has a rate wins:
+1. `FX_USDCAD_OVERRIDE` (manual; labelled "manual").
+2. `USDCAD=X` in `/data/lookthru/prices.sqlite` (`PRICES_DB_FILE`): the rate on the price date, or else
+   the most recent one before it. The flag then says "rate from <date>". Live reads of `FX_PAIR` are
+   written into this table, and the daily price prefetch fills it too.
+3. The last saved rate in `/data/lookthru/fx-usdcad.json` (`FX_CACHE_FILE`), if it is not newer than
+   the price date.
+
+The app never guesses a rate or uses 1:1.
+
+**Needs your confirmation.** In these cases the app flags the row instead of guessing:
+- a USD-looking ticker that can't be matched to a price;
+- a bare ticker that trades both in USD and in CAD (e.g. `AAPL` and `AAPL.NE`) with no suffix or
+  currency given;
+- a USD holding with no rate for its date.
+
+These rows are listed under "Needs your confirmation" in Full portfolio, with buttons to pick CAD or USD
+and a box to fix the ticker. Until you resolve them they are left out of every total, the allocation,
+the targets and the rebalancing, and the Target & rebalance tab says so.
 
 ## Ask about this ETF (local Ollama)
 
