@@ -64,6 +64,13 @@ Put your own LAN addresses only in `.env`.
    - Validation errors: a ticker in more than one bucket (e.g. core and a satellite), more than one core,
      core min > max, core min + satellite targets > 100%, core max + satellite targets < 100%, or (without a
      core) satellite targets not adding up to 100%.
+   - Filling buckets from your holdings: each bucket has a **From holdings** menu (Full portfolio tickers,
+     largest first), the "Not in any bucket" list has an **Assign to…** menu per holding, and the Full
+     portfolio **Positions** table has a **Classification** column (Unassigned / Core / each satellite by
+     name). Picking a bucket moves the ticker there and out of every other bucket, so these controls never
+     create duplicates; Unassigned removes it from all buckets. The comma-separated ticker box still works;
+     a ticker typed into two buckets shows "Conflict" in the dropdown and the duplicate-ticker error remains
+     until you pick one.
    - Holdings, targets, buckets, band and mode are shared across tabs and saved in this browser.
 
 ## Currency: everything in CAD

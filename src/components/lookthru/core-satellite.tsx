@@ -1,10 +1,12 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, Plus, X } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { ClassificationSelect } from "@/components/lookthru/classification";
 import { Badge } from "@/components/lookthru/ui/badge";
 import { Button } from "@/components/lookthru/ui/button";
 import { Input } from "@/components/lookthru/ui/input";
 import {
   bucketValues,
+  classificationOf,
   parseTickerList,
   planBuckets,
   splitByHoldings,
@@ -49,6 +51,7 @@ export function CoreSatellite({ result, globalBand }: { result: LookthroughResul
   const addBucket = usePortfolio((s) => s.addBucket);
   const updateBucket = usePortfolio((s) => s.updateBucket);
   const removeBucket = usePortfolio((s) => s.removeBucket);
+  const assign = usePortfolio((s) => s.assignTicker);
 
   const positions = useMemo(() => (result?.positions ?? []).map((p) => ({ ticker: p.ticker, value: p.value })), [result]);
   const issues = useMemo(() => validateBuckets(buckets, globalBand), [buckets, globalBand]);
@@ -56,7 +59,12 @@ export function CoreSatellite({ result, globalBand }: { result: LookthroughResul
     () => (issues.length || !buckets.length ? null : planBuckets(buckets, positions, { globalBand, mode })),
     [issues, buckets, positions, globalBand, mode],
   );
-  const byTicker = useMemo(() => bucketValues(buckets, positions).byTicker, [buckets, positions]);
+  const { byTicker, unassigned } = useMemo(() => bucketValues(buckets, positions), [buckets, positions]);
+  // Holdings from the Full portfolio tab, largest first, for the pick-from-holdings menus.
+  const holdings = useMemo(
+    () => [...new Map(positions.filter((p) => p.value > 0).map((p) => [p.ticker, p.value])).entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t),
+    [positions],
+  );
   const hasCore = buckets.some((b) => b.role === "core");
   const names = new Map(buckets.map((b) => [b.id, b.name]));
 
@@ -74,7 +82,22 @@ export function CoreSatellite({ result, globalBand }: { result: LookthroughResul
 
       <div className="mt-3 space-y-2">
         {buckets.map((b) => (
-          <BucketEditor key={b.id} bucket={b} globalBand={globalBand} onChange={(patch) => updateBucket(b.id, patch)} onRemove={() => removeBucket(b.id)} invalid={issues.some((i) => i.bucketId === b.id)} />
+          <BucketEditor
+            key={b.id}
+            bucket={b}
+            globalBand={globalBand}
+            onChange={(patch) => updateBucket(b.id, patch)}
+            onRemove={() => removeBucket(b.id)}
+            invalid={issues.some((i) => i.bucketId === b.id)}
+            picker={
+              <HoldingsPicker
+                holdings={holdings}
+                buckets={buckets}
+                bucket={b}
+                onPick={(t) => assign(t, b.id)}
+              />
+            }
+          />
         ))}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -87,6 +110,24 @@ export function CoreSatellite({ result, globalBand }: { result: LookthroughResul
           Add satellite bucket
         </Button>
       </div>
+
+      {buckets.length && unassigned.length ? (
+        <div className="mt-4 rounded-md border border-line p-3">
+          <p className="text-xs text-muted">
+            <b className="text-fg">Not in any bucket</b> — these holdings won&apos;t be traded by the model. Assign them here or
+            in the Classification column of the Full portfolio tab.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {unassigned.map((u) => (
+              <div key={u.ticker} className="flex items-center gap-1.5 rounded-md border border-line bg-elevated/40 py-1 pr-1 pl-2">
+                <span className="font-mono text-xs">{u.ticker}</span>
+                <span className="text-[11px] text-subtle">{formatMoney(u.value, "CAD")}</span>
+                <ClassificationSelect ticker={u.ticker} buckets={buckets} placeholder="Assign to…" className="h-7" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {issues.length ? (
         <div role="alert" className="mt-4 rounded-md border border-down/50 p-3 text-sm text-down">
@@ -178,7 +219,9 @@ function BucketEditor({
   onChange,
   onRemove,
   invalid,
+  picker,
 }: {
+  picker?: ReactNode;
   bucket: Bucket;
   globalBand: number;
   onChange: (patch: Partial<Omit<Bucket, "id">>) => void;
@@ -208,6 +251,7 @@ function BucketEditor({
           className="h-9 font-mono uppercase"
         />
       </label>
+      {picker}
       {b.role === "core" ? (
         <>
           <label className="space-y-1">
@@ -284,5 +328,52 @@ function BucketRow({ v, byTicker }: { v: BucketView; byTicker: Map<string, numbe
       </td>
       <td className="px-3 py-2 text-right font-mono tabular-nums">{formatPct(v.weightAfter)}</td>
     </tr>
+  );
+}
+
+/** "+ from holdings" menu for one bucket. Picking moves the ticker here (out of any other bucket). */
+function HoldingsPicker({
+  holdings,
+  buckets,
+  bucket,
+  onPick,
+}: {
+  holdings: string[];
+  buckets: Bucket[];
+  bucket: Bucket;
+  onPick: (ticker: string) => void;
+}) {
+  const options = holdings.filter((t) => {
+    const c = classificationOf(buckets, t);
+    return !(c.kind === "bucket" && c.id === bucket.id);
+  });
+  return (
+    <label className="space-y-1">
+      <span className="block text-[11px] text-muted">From holdings</span>
+      <select
+        value=""
+        disabled={!options.length}
+        onChange={(e) => e.target.value && onPick(e.target.value)}
+        aria-label={`Add a holding to ${bucket.name}`}
+        className="h-9 w-40 rounded-sm border border-line bg-elevated px-2 text-xs text-fg focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-40"
+      >
+        <option value="">{options.length ? "+ Add holding…" : holdings.length ? "All holdings added" : "No holdings yet"}</option>
+        {options.map((t) => {
+          const c = classificationOf(buckets, t);
+          const where =
+            c.kind === "bucket"
+              ? ` (move from ${buckets.find((b) => b.id === c.id)?.name ?? "bucket"})`
+              : c.kind === "conflict"
+                ? " (in two buckets)"
+                : "";
+          return (
+            <option key={t} value={t}>
+              {t}
+              {where}
+            </option>
+          );
+        })}
+      </select>
+    </label>
   );
 }

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SAMPLE_POSITIONS } from "./catalog";
 import { normalizeTicker } from "./tickers";
-import type { Bucket } from "./core-satellite";
+import { assignTicker, type Bucket } from "./core-satellite";
 import { type RebalanceMode, type Target, type TargetKind } from "./rebalance";
 import type { CurrencyCode, Position } from "./types";
 
@@ -41,6 +41,8 @@ type PortfolioState = {
   addBucket: (role: Bucket["role"]) => void;
   updateBucket: (id: string, patch: Partial<Omit<Bucket, "id">>) => void;
   removeBucket: (id: string) => void;
+  /** Move a ticker into one bucket (removed from all others); null = Unassigned. */
+  assignTicker: (ticker: string, bucketId: string | null) => void;
 };
 
 function nid(): string {
@@ -142,6 +144,7 @@ export const usePortfolio = create<PortfolioState>()(
       updateBucket: (id, patch) =>
         set({ buckets: get().buckets.map((b) => (b.id === id ? { ...b, ...patch } : b)) }),
       removeBucket: (id) => set({ buckets: get().buckets.filter((b) => b.id !== id) }),
+      assignTicker: (ticker, bucketId) => set({ buckets: assignTicker(get().buckets, ticker, bucketId) }),
     }),
     {
       name: "lookthru-book-v4",

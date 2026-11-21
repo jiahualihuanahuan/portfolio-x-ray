@@ -2,7 +2,10 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/lookthru/ui/badge";
 import { Button } from "@/components/lookthru/ui/button";
 import { Input } from "@/components/lookthru/ui/input";
+import { ClassificationSelect } from "@/components/lookthru/classification";
+import type { Bucket } from "@/lib/lookthru/core-satellite";
 import { formatChange, formatMoney, formatPct } from "@/lib/lookthru/format";
+import { usePortfolio } from "@/lib/lookthru/store";
 import type { LookthroughResult, PositionView } from "@/lib/lookthru/types";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +25,20 @@ export function PositionsTable({
   onShares: (id: string, shares: number) => void;
   onRemove: (id: string) => void;
 }) {
+  const buckets = usePortfolio((s) => s.buckets);
+  const setTab = usePortfolio((s) => s.setTab);
   return (
     <div className="overflow-x-auto rounded-xl bg-surface border border-line">
-      <table className="w-full min-w-[640px] text-left text-sm">
+      {buckets.length ? null : (
+        <p className="border-b border-line px-4 py-2 text-xs text-muted">
+          Classification: no core or satellite buckets yet.{" "}
+          <button type="button" className="underline hover:text-fg" onClick={() => setTab("rebalance")}>
+            Create them in the Target &amp; rebalance tab
+          </button>
+          , then classify each holding here.
+        </p>
+      )}
+      <table className="w-full min-w-[760px] text-left text-sm">
         <thead className="text-[11px] tracking-wide whitespace-nowrap text-muted uppercase">
           <tr className="border-b border-line">
             <th className="px-4 py-3 font-medium">Holding</th>
@@ -33,6 +47,7 @@ export function PositionsTable({
             <th className="px-4 py-3 text-right font-medium">Price</th>
             <th className="px-4 py-3 text-right font-medium">Value</th>
             <th className="px-4 py-3 text-right font-medium">Weight</th>
+            <th className="px-4 py-3 font-medium">Classification</th>
             <th className="w-12 px-2 py-3" />
           </tr>
         </thead>
@@ -44,6 +59,7 @@ export function PositionsTable({
               currency={result.currency}
               onShares={onShares}
               onRemove={onRemove}
+              buckets={buckets}
             />
           ))}
         </tbody>
@@ -57,7 +73,9 @@ function PositionRow({
   currency,
   onShares,
   onRemove,
+  buckets,
 }: {
+  buckets: Bucket[];
   row: PositionView;
   currency: LookthroughResult["currency"];
   onShares: (id: string, shares: number) => void;
@@ -114,6 +132,13 @@ function PositionRow({
         {formatMoney(row.value, currency)}
       </td>
       <td className="px-4 py-3 text-right font-mono tabular-nums">{formatPct(row.weight)}</td>
+      <td className="px-4 py-3">
+        {buckets.length ? (
+          <ClassificationSelect ticker={row.ticker} buckets={buckets} />
+        ) : (
+          <span className="text-xs text-subtle">—</span>
+        )}
+      </td>
       <td className="px-2 py-3">
         <Button
           type="button"

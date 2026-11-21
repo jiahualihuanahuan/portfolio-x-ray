@@ -340,3 +340,32 @@ export function splitByHoldings(amount: number, tickers: string[], byTicker: Map
 export function parseTickerList(text: string): string[] {
   return [...new Set(text.split(/[\s,;]+/).map((t) => t.trim().toUpperCase()).filter(Boolean))];
 }
+
+export type Classification =
+  | { kind: "unassigned" }
+  | { kind: "bucket"; id: string }
+  | { kind: "conflict"; ids: string[] };
+
+/** Which bucket a ticker is in. Typed-in duplicates (same ticker in two buckets) show as a conflict. */
+export function classificationOf(buckets: Bucket[], ticker: string): Classification {
+  const k = tickerKey(ticker);
+  const ids = buckets.filter((b) => b.tickers.some((t) => tickerKey(t) === k)).map((b) => b.id);
+  if (!ids.length) return { kind: "unassigned" };
+  if (ids.length === 1) return { kind: "bucket", id: ids[0]! };
+  return { kind: "conflict", ids };
+}
+
+/**
+ * Move a ticker into one bucket (or none with `bucketId = null`): it is removed from every bucket
+ * first, so assigning never creates a duplicate. Unknown bucket ids just unassign. Returns a new array.
+ */
+export function assignTicker(buckets: Bucket[], ticker: string, bucketId: string | null): Bucket[] {
+  const k = tickerKey(ticker);
+  if (!k) return buckets;
+  const label = ticker.trim().toUpperCase();
+  return buckets.map((b) => {
+    const kept = b.tickers.filter((t) => tickerKey(t) !== k);
+    if (b.id === bucketId) return { ...b, tickers: [...kept, label] };
+    return kept.length === b.tickers.length ? b : { ...b, tickers: kept };
+  });
+}

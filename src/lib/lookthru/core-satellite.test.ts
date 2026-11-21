@@ -6,6 +6,8 @@ import {
   parseTickerList,
   planBuckets,
   splitByHoldings,
+  assignTicker,
+  classificationOf,
   validateBuckets,
   type Bucket,
   type BucketPlan,
@@ -170,5 +172,45 @@ describe("splitByHoldings", () => {
   });
   it("parses ticker lists", () => {
     assert.deepEqual(parseTickerList("hyod.to, XEQT ;xeqt"), ["HYOD.TO", "XEQT"]);
+  });
+});
+
+describe("assignTicker / classificationOf", () => {
+  const base: Bucket[] = [
+    { id: "core", name: "Core", role: "core", tickers: ["HYOD.TO"], min: 0.54, max: 0.66 },
+    { id: "btc", name: "Bitcoin", role: "satellite", tickers: ["BTCC.TO"], target: 0.1 },
+    { id: "gold", name: "Gold", role: "satellite", tickers: [], target: 0.1 },
+  ];
+  it("assigns an unassigned ticker to one bucket", () => {
+    const out = assignTicker(base, "cgl.to", "gold");
+    assert.deepEqual(out.find((b) => b.id === "gold")!.tickers, ["CGL.TO"]);
+    assert.deepEqual(classificationOf(out, "CGL.TO"), { kind: "bucket", id: "gold" });
+    assert.equal(base[2]!.tickers.length, 0, "input is not mutated");
+  });
+  it("moving a ticker removes it from its old bucket (never duplicates)", () => {
+    const out = assignTicker(base, "BTCC.TO", "core");
+    assert.deepEqual(out.find((b) => b.id === "btc")!.tickers, []);
+    assert.deepEqual(out.find((b) => b.id === "core")!.tickers, ["HYOD.TO", "BTCC.TO"]);
+    assert.deepEqual(validateBuckets([{ ...out[0]! }, out[1]!, { ...out[2]!, tickers: ["CGL.TO"] }], G).filter((i) => /belong to one bucket/.test(i.message)), []);
+  });
+  it("re-assigning to the same bucket keeps one copy", () => {
+    const out = assignTicker(assignTicker(base, "HYOD.TO", "core"), "hyod.to", "core");
+    assert.deepEqual(out.find((b) => b.id === "core")!.tickers, ["HYOD.TO"]);
+  });
+  it("null (Unassigned) removes the ticker from every bucket", () => {
+    const out = assignTicker(base, "HYOD.TO", null);
+    assert.deepEqual(out.find((b) => b.id === "core")!.tickers, []);
+    assert.deepEqual(classificationOf(out, "HYOD.TO"), { kind: "unassigned" });
+  });
+  it("resolves a typed-in duplicate: conflict before, single bucket after", () => {
+    const dup = base.map((b) => (b.id === "gold" ? { ...b, tickers: ["HYOD.TO"] } : b));
+    assert.deepEqual(classificationOf(dup, "HYOD.TO"), { kind: "conflict", ids: ["core", "gold"] });
+    assert.ok(validateBuckets(dup, G).some((i) => /HYOD.TO is in both the core and a satellite/.test(i.message)));
+    const fixed = assignTicker(dup, "HYOD.TO", "gold");
+    assert.deepEqual(classificationOf(fixed, "HYOD.TO"), { kind: "bucket", id: "gold" });
+  });
+  it("matches Canadian class-share aliases like the rest of the app", () => {
+    const out = assignTicker(base, "hyod.to ", "gold");
+    assert.deepEqual(out.find((b) => b.id === "core")!.tickers, []);
   });
 });
