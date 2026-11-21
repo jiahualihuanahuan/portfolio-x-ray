@@ -81,68 +81,6 @@ unset, unreachable or the model is missing, the panel says so; the rest of the a
 Data: a pre-scraped holdings file if you provide one, then the issuers' public holdings pages and Yahoo Finance (unofficial).
 No API keys, no accounts. Not investment advice.
 
-## Settings (.env)
-
-Every setting is optional. Copy the template and edit it; `.env` is gitignored and never committed:
-
-```bash
-cp .env.example .env
-```
-
-`docker compose` reads `.env` for the `${...}` defaults and loads it into the container through an optional `env_file`
-(Docker Compose 2.24+), so the app also starts without it. `.env.example` lists every variable the app reads, with a
-one-line comment each: port, Ollama, the USD→CAD source and manual override, the default rebalance band, data/cache
-paths, background jobs and the Brompton fetch delay.
-
-## Tabs
-
-1. **ETF breakdown** — pick one fund (search box with autocomplete) and an amount in C$ (default C$10,000). Shows only
-   that fund's underlying holdings, unrolled through every fund-of-funds layer by the same look-through engine as the
-   portfolio (Brompton BMAX via bromptongroup.com, index caches, leverage as negative cash). Includes the Forward P/E,
-   sector and country mix, an **Ask about this ETF** panel (local Ollama, below) and, folded away, the old Fund Lookup
-   details: the fund's own one-layer holdings with drill-down, total-return chart and valuation card.
-2. **Full portfolio** — add many tickers with share counts (or paste a Wealthsimple CSV). Everything is broken down to
-   single stocks: KPIs incl. look-through Forward P/E, charts, Look-through / Positions / Nested tree. This is the
-   previous main view.
-3. **Target & rebalance** — set targets in C$ by **ticker** and/or by **sector** and get an alert when anything drifts.
-   - Ticker targets compare with the value of the position you hold directly in that ticker (Full portfolio tab).
-     Sector targets compare with look-through sector exposure (all ETFs unrolled).
-   - Deviation is relative: `|actual − target| / target`. A row is flagged when it is **more than** the band
-     (default 10%, editable in the tab; server default `REBALANCE_THRESHOLD_PCT`). A target of 0 flags any holding.
-   - Only flagged rows get a trade, sized to bring that row back to exactly its target. **Sell & buy** mode sells
-     overweight and buys underweight rows and shows the net new cash needed (or freed). **Buy-only** mode only buys
-     underweight rows with new cash and never sells; overweight rows are shown but left alone.
-   - If a ticker target and a sector target both touch the same holding, both views are shown separately; there is
-     no priority rule. Ticker trades show an approximate share count at the current C$ price.
-
-Holdings, the picked ETF, targets, band and mode are shared across tabs and saved in this browser (localStorage).
-
-## Currency: everything in CAD
-
-All amounts — prices, values, targets and trades — are in Canadian dollars (shown as `C$`). Targets you type are CAD.
-USD-priced securities are converted at the live Yahoo `USDCAD=X` rate (`FX_PAIR`; falls back to `CAD=X`), cached for
-5 minutes in memory and on disk at `/data/lookthru/fx-usdcad.json` (`FX_CACHE_FILE`). The header shows the rate, whether
-it is live, cached or manual, and when it was fetched (Toronto time). Set `FX_USDCAD_OVERRIDE=1.37` to force a manual rate.
-If Yahoo is unreachable and no cached rate exists, the app shows an error instead of assuming 1:1 or a fixed rate
-(books that hold only CAD listings still work).
-
-## Ask about this ETF (local Ollama)
-
-The ETF breakdown tab has a Q&A panel ("what does BMAX do?"). The server calls Ollama `/api/chat` with streaming and a
-system prompt built from the fund's look-through: top holdings with weights, sector mix, cash/leverage, child funds,
-as-of date, source, coverage and provider. The model is told to answer only from that data and to say when it doesn't
-know. `<think>` blocks (qwen) are stripped. Nothing leaves your network except the Ollama call you configure.
-
-```bash
-# .env
-OLLAMA_URL=http://host.docker.internal:11434   # Ollama on the Docker host, or http://<your-ollama-host>:11434
-OLLAMA_MODEL=qwen3.5:9b
-```
-
-`docker-compose.yml` maps `host.docker.internal` to the host gateway. If Ollama runs on the host, start it with
-`OLLAMA_HOST=0.0.0.0` so the container can reach it. If `OLLAMA_URL` is unset, unreachable, slow (`OLLAMA_TIMEOUT_MS`)
-or missing the model, the panel shows a clear message instead of failing.
-
 ## Pre-scraped holdings (optional)
 
 The app first reads `/data/lookthru/holdings.json` (override with `LOOKTHRU_HOLDINGS_FILE`), then falls back to its cache
