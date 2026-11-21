@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SAMPLE_POSITIONS } from "./catalog";
 import { normalizeTicker } from "./tickers";
+import type { Bucket } from "./core-satellite";
 import { type RebalanceMode, type Target, type TargetKind } from "./rebalance";
 import type { CurrencyCode, Position } from "./types";
 
@@ -35,6 +36,11 @@ type PortfolioState = {
   clearTargets: () => void;
   setThreshold: (t: number | null) => void;
   setMode: (m: RebalanceMode) => void;
+  // Core–satellite buckets (Target & rebalance tab).
+  buckets: Bucket[];
+  addBucket: (role: Bucket["role"]) => void;
+  updateBucket: (id: string, patch: Partial<Omit<Bucket, "id">>) => void;
+  removeBucket: (id: string) => void;
 };
 
 function nid(): string {
@@ -124,6 +130,18 @@ export const usePortfolio = create<PortfolioState>()(
         set({ threshold });
       },
       setMode: (mode) => set({ mode }),
+      buckets: [],
+      addBucket: (role) => {
+        const n = get().buckets.filter((b) => b.role === "satellite").length + 1;
+        const b: Bucket =
+          role === "core"
+            ? { id: nid(), name: "Core", role, tickers: [], min: 0.54, max: 0.66 }
+            : { id: nid(), name: `Satellite ${n}`, role, tickers: [], target: 0.1 };
+        set({ buckets: [...get().buckets, b] });
+      },
+      updateBucket: (id, patch) =>
+        set({ buckets: get().buckets.map((b) => (b.id === id ? { ...b, ...patch } : b)) }),
+      removeBucket: (id) => set({ buckets: get().buckets.filter((b) => b.id !== id) }),
     }),
     {
       name: "lookthru-book-v4",
@@ -136,6 +154,7 @@ export const usePortfolio = create<PortfolioState>()(
         targets: s.targets,
         threshold: s.threshold,
         mode: s.mode,
+        buckets: s.buckets,
       }),
       onRehydrateStorage: () => (state) => {
         // The app reports in CAD only; older saved books may still say USD.

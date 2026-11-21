@@ -48,7 +48,23 @@ Put your own LAN addresses only in `.env`.
      rows stay as they are and the footer shows the cash needed.
    - Ticker and sector targets are two separate views. If both apply to the same money, both are shown and
      neither takes priority.
-   - Holdings, targets, band and mode are shared across tabs and saved in this browser.
+   - **Core–satellite model** (top of the tab): one *core* bucket of tickers with an acceptable range (e.g.
+     HYOD.TO at 54–66%, midpoint 60%) and any number of *satellite* buckets (sector ETFs, Bitcoin, gold,
+     miners…) with a target % each (e.g. four at 10%). A satellite can have its own relative band; otherwise
+     the global band applies (10% → 9–11%), and the table says which. Percentages are of the total held in all
+     buckets; holdings outside every bucket are listed but not traded.
+   - Bucket rebalancing moves the **minimum** needed to bring each bucket to the **nearest edge** of its range
+     (not to the target). *Sell & buy* greedily pairs the most overweight with the most underweight (if
+     overweights free more than underweights need, the rest goes to buckets with the most room; if less, it
+     comes from buckets with the most room above their minimum). *Buy-only* finds the smallest new cash that
+     brings every bucket into range without selling, per bucket and in total.
+   - Each bucket trade shows a C$ amount; with several tickers it shows a per-ticker split proportional to
+     current holdings (labelled). If a multi-ticker bucket holds nothing, or has no tickers, it asks you to
+     choose the ticker instead of guessing.
+   - Validation errors: a ticker in more than one bucket (e.g. core and a satellite), more than one core,
+     core min > max, core min + satellite targets > 100%, core max + satellite targets < 100%, or (without a
+     core) satellite targets not adding up to 100%.
+   - Holdings, targets, buckets, band and mode are shared across tabs and saved in this browser.
 
 ## Currency: everything in CAD
 

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { CoreSatellite } from "@/components/lookthru/core-satellite";
 import { Badge } from "@/components/lookthru/ui/badge";
 import { Button } from "@/components/lookthru/ui/button";
 import { Input } from "@/components/lookthru/ui/input";
@@ -80,7 +81,7 @@ export function RebalanceTab({ result, error }: { result: LookthroughResult | nu
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-4">
           <label className="space-y-1.5">
-            <span className="block text-xs font-medium tracking-wide text-muted">Alert band (%)</span>
+            <span className="block text-xs font-medium tracking-wide text-muted">Global band (%, relative)</span>
             <Input
               key={threshold}
               type="number"
@@ -126,7 +127,7 @@ export function RebalanceTab({ result, error }: { result: LookthroughResult | nu
           ) : null}
         </div>
         <p className="mt-2 text-[11px] text-subtle">
-          Buy-only adds new cash to underweight rows and never sells; overweight rows are shown but left alone,
+          The global band applies to C$ targets and to satellite buckets without their own band. Buy-only adds new cash to underweight rows and never sells; overweight rows are shown but left alone,
           so they stay overweight in dollars.
         </p>
       </section>
@@ -137,6 +138,14 @@ export function RebalanceTab({ result, error }: { result: LookthroughResult | nu
         <p className="text-xs text-muted">No portfolio loaded yet — actual values count as C$0 until you add holdings in the Full portfolio tab.</p>
       ) : null}
 
+      <CoreSatellite result={result} globalBand={threshold} />
+
+      <div>
+        <h3 className="font-medium text-lg tracking-tight">C$ targets by ticker or sector</h3>
+        <p className="text-xs text-muted">
+          Separate from the core–satellite model. Flagged rows get a trade back to the exact C$ target.
+        </p>
+      </div>
       <TargetForm result={result} onAdd={addTarget} />
 
       {targets.length ? (
