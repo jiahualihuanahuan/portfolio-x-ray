@@ -130,13 +130,13 @@ export function EtfBreakdown() {
             ))}
           </section>
           {result.warnings.length ? <p className="text-xs text-muted">{result.warnings.join(" ")}</p> : null}
+          {context ? <AskPanel context={context} /> : null}
           <LookthroughTable
             result={result}
             limit={600}
             weightLabel="Of fund"
             foldNote="more names not shown."
           />
-          {context ? <AskPanel context={context} /> : null}
           <CompositionCharts result={result} />
           <details className="rounded-xl border border-line bg-surface p-4 sm:p-5">
             <summary className="cursor-pointer text-sm font-medium">

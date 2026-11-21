@@ -279,7 +279,7 @@ function TargetForm({
             variant="secondary"
             size="sm"
             onClick={() => {
-              for (const p of result.positions) if (p.value > 0) onAdd("ticker", p.ticker, Math.round(p.value));
+              for (const p of result.positions) if (p.value > 0) onAdd("ticker", p.ticker, Math.round(p.value * 100) / 100);
             }}
           >
             Fill ticker targets with current values
@@ -289,7 +289,7 @@ function TargetForm({
             variant="secondary"
             size="sm"
             onClick={() => {
-              for (const s of result.sectors) if (s.value > 0) onAdd("sector", s.name, Math.round(s.value));
+              for (const s of result.sectors) if (s.value > 0) onAdd("sector", s.name, Math.round(s.value * 100) / 100);
             }}
           >
             Fill sector targets with current values
